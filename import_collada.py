@@ -4,7 +4,6 @@ from tempfile import NamedTemporaryFile
 from contextlib import contextmanager
 
 import bpy
-from bpy.ops import BPyOpsSubModOp
 from bpy_extras.image_utils import load_image
 from mathutils import Matrix, Vector
 
@@ -35,34 +34,23 @@ def load(op, ctx, filepath=None, **kwargs):
 
     tf = kwargs['transformation']
 
-    with prevented_updates(ctx):
-        if tf in ('MUL', 'APPLY'):
-            for i, obj in enumerate(c.scene.objects('geometry')):
-                b_geoms = imp.geometry(obj)
-                if tf == 'MUL':
-                    tf_mat = Matrix(obj.matrix)
-                    for b_obj in b_geoms:
-                        b_obj.matrix_world = tf_mat
-        elif tf == 'PARENT':
-            _dfs(c.scene, imp.node)
+    if tf in ('MUL', 'APPLY'):
+        for i, obj in enumerate(c.scene.objects('geometry')):
+            b_geoms = imp.geometry(obj)
+            if tf == 'MUL':
+                tf_mat = Matrix(obj.matrix)
+                for b_obj in b_geoms:
+                    b_obj.matrix_world = tf_mat
+    elif tf == 'PARENT':
+        _dfs(c.scene, imp.node)
 
-        for i, obj in enumerate(c.scene.objects('light')):
-            imp.light(obj, i)
+    for i, obj in enumerate(c.scene.objects('light')):
+        imp.light(obj, i)
 
-        for obj in c.scene.objects('camera'):
-            imp.camera(obj)
+    for obj in c.scene.objects('camera'):
+        imp.camera(obj)
 
     return {'FINISHED'}
-
-@contextmanager
-def prevented_updates(ctx):
-    """ Stop Blender from funning scene update for each change. Update it
-        just once the import is finished. """
-    scene_update = BPyOpsSubModOp._scene_update
-    setattr(BPyOpsSubModOp, '_scene_update', lambda ctx: None)
-    yield
-    setattr(BPyOpsSubModOp, '_scene_update', scene_update)
-    BPyOpsSubModOp._scene_update(ctx)
 
 def get_import(collada):
     for i in VENDOR_SPECIFIC:
@@ -145,8 +133,8 @@ class ColladaImport(object):
             b_obj = bpy.data.objects.new(b_meshname, b_mesh)
             b_obj.data = b_mesh
 
-            self._ctx.scene.objects.link(b_obj)
-            self._ctx.scene.objects.active = b_obj
+            self._ctx.scene.collection.objects.link(b_obj)
+            self._ctx.view_layer.objects.active = b_obj
 
             if len(b_obj.material_slots) == 0:
                 bpy.ops.object.material_slot_add()
@@ -169,56 +157,58 @@ class ColladaImport(object):
             # with applied transformation, mesh reuse is not possible
             return bpy.data.meshes[b_name]
         else:
-            if triset.vertex_index is None or \
-                    not len(triset.vertex_index):
+            if triset.vertex_index is None or not len(triset.vertex_index):
                 return
 
             b_mesh = bpy.data.meshes.new(b_name)
-            b_mesh.vertices.add(len(triset.vertex))
-            b_mesh.tessfaces.add(len(triset))
-
-            for i, vertex in enumerate(triset.vertex):
-                b_mesh.vertices[i].co = vertex
-
-            # eekadoodle
-            eekadoodle_faces = [v
+            b_mesh.from_pydata \
+              (
+                triset.vertex,
+                [],
+                [v
                     for f in triset.vertex_index
-                    for v in _eekadoodle_face(*f)]
+                    for v in (_eekadoodle_face(*f),)
+                ]
+              )
 
-            b_mesh.tessfaces.foreach_set(
-                'vertices_raw', eekadoodle_faces)
-
-            has_normal = (triset.normal_index is not None)
-            has_uv = (len(triset.texcoord_indexset) > 0)
-
+            has_normal = triset.normal_index is not None
+            has_uv = len(triset.texcoord_indexset) > 0
             if has_normal:
                 # TODO import normals
-                for i, f in enumerate(b_mesh.tessfaces):
-                    f.use_smooth = not _is_flat_face(
-                            triset.normal[triset.normal_index[i]])
+                for i, f in enumerate(b_mesh.polygons):
+                    f.use_smooth = not _is_flat_face(triset.normal[triset.normal_index[i]])
+                #end for
+            #end if
             if has_uv:
                 for j in range(len(triset.texcoord_indexset)):
-                    self.texcoord_layer(
-                            triset,
-                            triset.texcoordset[j],
-                            triset.texcoord_indexset[j],
-                            b_mesh,
-                            b_mat)
-
+                    self.texcoord_layer \
+                      (
+                        triset,
+                        triset.texcoordset[j],
+                        triset.texcoord_indexset[j],
+                        b_mesh,
+                        b_mat
+                      )
+                #end for
+            #end if
             b_mesh.update()
             return b_mesh
+        #end if
+    #end geometry_triangleset
 
     def texcoord_layer(self, triset, texcoord, index, b_mesh, b_mat):
-        b_mesh.uv_textures.new()
-        for i, f in enumerate(b_mesh.tessfaces):
+        uv = b_mesh.uv_layers.new()
+        for i, f in enumerate(b_mesh.polygons):
             t1, t2, t3 = index[i]
-            tface = b_mesh.tessface_uv_textures[-1].data[i]
             # eekadoodle
             if triset.vertex_index[i][2] == 0:
                 t1, t2, t3 = t3, t1, t2
-            tface.uv1 = texcoord[t1]
-            tface.uv2 = texcoord[t2]
-            tface.uv3 = texcoord[t3]
+            #end if
+            uv.data[f.loop_start].uv = texcoord[t1]
+            uv.data[f.loop_start + 1].uv = texcoord[t2]
+            uv.data[f.loop_start + 2].uv = texcoord[t3]
+        #end for
+    #end texcoord_layer
 
     def light(self, light, i):
         if isinstance(light.original, AmbientLight):
@@ -230,7 +220,7 @@ class ColladaImport(object):
             elif isinstance(light.original, PointLight):
                 b_lamp = bpy.data.lamps.new(b_name, type='POINT')
                 b_obj = bpy.data.objects.new(b_name, b_lamp)
-                self._ctx.scene.objects.link(b_obj)
+                self._ctx.scene.collection.objects.link(b_obj)
                 b_obj.matrix_world = Matrix.Translation(light.position)
             elif isinstance(light.original, SpotLight):
                 b_lamp = bpy.data.lamps.new(b_name, type='SPOT')
@@ -239,22 +229,24 @@ class ColladaImport(object):
         effect = mat.effect
         b_mat = bpy.data.materials.new(b_name)
         b_name = b_mat.name
-        b_mat.diffuse_shader = 'LAMBERT'
-        getattr(self, 'rendering_' + \
-                effect.shadingtype)(mat, b_mat)
-        bpy.data.materials[b_name].use_transparent_shadows = \
-                self._kwargs.get('transparent_shadows', False)
-        if effect.emission:
-            b_mat.emit = sum(effect.emission[:3]) / 3.0
-        self.rendering_transparency(effect, b_mat)
-        self.rendering_reflectivity(effect, b_mat)
+        if False : # TBD
+            b_mat.diffuse_shader = 'LAMBERT'
+            getattr(self, 'rendering_' + \
+                    effect.shadingtype)(mat, b_mat)
+            bpy.data.materials[b_name].use_transparent_shadows = \
+                    self._kwargs.get('transparent_shadows', False)
+            if effect.emission:
+                b_mat.emit = sum(effect.emission[:3]) / 3.0
+            self.rendering_transparency(effect, b_mat)
+            self.rendering_reflectivity(effect, b_mat)
+        #end if
         return b_name
 
     def node(self, node, parent):
         if isinstance(node, (Node, NodeNode)):
             b_obj = bpy.data.objects.new(self.name(node), None)
             b_obj.matrix_world = Matrix(node.matrix)
-            self._ctx.scene.objects.link(b_obj)
+            self._ctx.scene.collection.objects.link(b_obj)
             if parent:
                 b_obj.parent = parent
             parent = b_obj

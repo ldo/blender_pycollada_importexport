@@ -19,18 +19,19 @@
 # Script copyright (C) Tim Knip, floorplanner.com
 # Contributors: Tim Knip (tim@floorplanner.com)
 
-bl_info = {
-    'name'       : 'COLLADA format',
-    'author'     : 'Tim Knip, Dusan Maliarik',
-    'blender'    : (2, 5, 7),
-    'api'        : 35622,
-    'location'   : 'File > Import',
-    'description': 'Import COLLADA',
-    'warning'    : '',
-    'wiki_url'   : 'https://github.com/skrat/blender-pycollada/wiki',
-    'tracker_url': 'https://github.com/skrat/blender-pycollada/issues',
-    'support'    : 'OFFICIAL',
-    'category'   : 'Import'}
+bl_info = \
+    {
+        'name'       : 'COLLADA format',
+        'author'     : 'Tim Knip, Dusan Maliarik',
+        'blender'    : (2, 83, 0),
+        'location'   : 'File > Import, File > Export',
+        'description': 'Import/Export COLLADA',
+        'warning'    : '',
+        'wiki_url'   : 'https://github.com/skrat/blender-pycollada/wiki',
+        'tracker_url': 'https://github.com/skrat/blender-pycollada/issues',
+        'support'    : 'TESTING',
+        'category'   : 'Import-Export',
+    }
 
 
 if 'bpy' in locals():
@@ -42,11 +43,14 @@ if 'bpy' in locals():
 
 import os
 import bpy
-from bpy.props import BoolProperty
-from bpy.props import CollectionProperty
-from bpy.props import EnumProperty
-from bpy.props import StringProperty
-from bpy_extras.io_utils import ImportHelper, ExportHelper
+from bpy.props import \
+    BoolProperty, \
+    CollectionProperty, \
+    EnumProperty, \
+    StringProperty
+from bpy_extras.io_utils import \
+    ImportHelper, \
+    ExportHelper
 
 
 class IMPORT_OT_collada(bpy.types.Operator, ImportHelper):
@@ -56,31 +60,31 @@ class IMPORT_OT_collada(bpy.types.Operator, ImportHelper):
     bl_label = "Import COLLADA"
     bl_options = {'UNDO'}
 
-    filter_glob = StringProperty(
+    filter_glob : StringProperty(
             default='*.dae;*.kmz',
             options={'HIDDEN'},
             )
-    files = CollectionProperty(
+    files : CollectionProperty(
             name="File Path",
             type=bpy.types.OperatorFileListElement,
             )
-    directory = StringProperty(
+    directory : StringProperty(
             subtype='DIR_PATH',
             )
 
-    transparent_shadows = BoolProperty(
+    transparent_shadows : BoolProperty(
             default=False,
             name="Transparent shadows",
             description="Import all materials receiving transparent shadows",
             )
 
-    raytrace_transparency = BoolProperty(
+    raytrace_transparency : BoolProperty(
             default=False,
             name="Raytrace transparency",
             description="Raytrace transparent materials",
             )
 
-    transformation = EnumProperty(
+    transformation : EnumProperty(
             name="Transformations",
             items=(
                 ('MUL',     "Multiply", ""),
@@ -113,15 +117,15 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper):
     bl_options = {'UNDO'}
 
     filename_ext = '.dae'
-    filter_glob = StringProperty(
+    filter_glob : StringProperty(
             default='*.dae;*.kmz',
             options={'HIDDEN'},
             )
-    directory = StringProperty(
+    directory : StringProperty(
             subtype='DIR_PATH',
             )
 
-    export_as = EnumProperty(
+    export_as : EnumProperty(
             name="Export as",
             items=(('dae_only', "DAE only", ""),
                    ('dae_textures', "DAE and textures", ""),
@@ -130,7 +134,7 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper):
             default='dae_only',
             )
 
-    axis_up = EnumProperty(
+    axis_up : EnumProperty(
             name="Up",
             items=(('X', "X Up", ""),
                    ('Y', "Y Up", ""),
@@ -142,7 +146,7 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper):
             default='Z',
             )
 
-    use_selection = BoolProperty(
+    use_selection : BoolProperty(
             name="Selection Only",
             description="Export selected objects only",
             default=False,
@@ -158,6 +162,11 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper):
             return {'CANCELLED'}
         return export_collada.save(self, context, **kwargs)
 
+_classes_ = \
+    (
+        IMPORT_OT_collada,
+        EXPORT_OT_collada,
+    )
 
 def menu_func_import(self, context):
     self.layout.operator(IMPORT_OT_collada.bl_idname,
@@ -167,19 +176,19 @@ def menu_func_export(self, context):
     self.layout.operator(EXPORT_OT_collada.bl_idname,
             text="COLLADA (py) (.dae, .kmz)")
 
-
 def register():
-    bpy.utils.register_module(__name__)
-    bpy.types.INFO_MT_file_import.append(menu_func_import)
-    bpy.types.INFO_MT_file_export.append(menu_func_export)
-
+    for çlass in _classes_ :
+        bpy.utils.register_class(çlass)
+    #end for
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
-    bpy.types.INFO_MT_file_import.remove(menu_func_import)
-    bpy.types.INFO_MT_file_export.remove(menu_func_export)
-
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+    for çlass in _classes_ :
+        bpy.utils.unregister_class(çlass)
+    #end for
 
 if __name__ == '__main__':
     register()
-
