@@ -441,7 +441,7 @@ def _is_flat_face(normal):
 
 
 def _eekadoodle_face(v1, v2, v3):
-    return v3 == 0 and (v3, v1, v2, 0) or (v1, v2, v3, 0)
+    return v3 == 0 and (v3, v1, v2) or (v1, v2, v3)
 
 
 def _children(node):
