@@ -165,9 +165,9 @@ class ColladaImport(object):
               (
                 triset.vertex,
                 [],
-                [v
+                [((v3, v1, v2), (v1, v2, v3))[v3 != 0]
                     for f in triset.vertex_index
-                    for v in (_eekadoodle_face(*f),)
+                    for v1, v2, v3 in (f,)
                 ]
               )
 
@@ -438,11 +438,6 @@ def _is_flat_face(normal):
         if dp < 0.99999 or dp > 1.00001:
             return False
     return True
-
-
-def _eekadoodle_face(v1, v2, v3):
-    return v3 == 0 and (v3, v1, v2) or (v1, v2, v3)
-
 
 def _children(node):
     if isinstance(node, Scene):
