@@ -1,5 +1,7 @@
 import os
 import math
+from numbers import \
+    Real
 from tempfile import NamedTemporaryFile
 from contextlib import contextmanager
 
@@ -59,15 +61,16 @@ def get_import(collada):
     return ColladaImport
 
 
-class ColladaImport(object):
+class ColladaImport:
     """ Standard COLLADA importer. """
+
     def __init__(self, ctx, collada, basedir, **kwargs):
         self._ctx = ctx
         self._collada = collada
         self._kwargs = kwargs
-        self._images = {}
         self._namecount = 0
         self._names = {}
+    #end __init__
 
     def camera(self, bcam):
         bpy.ops.object.add(type='CAMERA')
@@ -92,10 +95,14 @@ class ColladaImport(object):
             b_cam.ortho_scale = max(
                     bcam.xmag or bcam.ymag,
                     bcam.ymag or bcam.xmag)
+        #end if
         if bcam.znear:
             b_cam.clip_start = bcam.znear
+        #end if
         if bcam.zfar:
             b_cam.clip_end = bcam.zfar
+        #end if
+    #end camera
 
     def geometry(self, bgeom):
         b_materials = {}
@@ -104,11 +111,14 @@ class ColladaImport(object):
             b_matname = self.name(mat)
             if b_matname not in bpy.data.materials:
                 b_matname = self.material(mat, b_matname)
+            #end if
             b_materials[sym] = bpy.data.materials[b_matname]
+        #end for
 
         primitives = bgeom.original.primitives
         if self._transform('APPLY'):
             primitives = bgeom.primitives()
+        #end if
 
         b_geoms = []
         for i, p in enumerate(primitives):
@@ -116,6 +126,7 @@ class ColladaImport(object):
                 b_mat_key = p.original.material
             else:
                 b_mat_key = p.material
+            #end if
             b_mat = b_materials.get(b_mat_key, None)
             b_meshname = self.name(bgeom.original, i)
 
@@ -127,6 +138,7 @@ class ColladaImport(object):
                         p.triangleset(), b_meshname, b_mat)
             else:
                 continue
+            #end if
             if not b_mesh:
                 continue
 
@@ -138,6 +150,7 @@ class ColladaImport(object):
 
             if len(b_obj.material_slots) == 0:
                 bpy.ops.object.material_slot_add()
+            #end if
             b_obj.material_slots[0].link = 'OBJECT'
             b_obj.material_slots[0].material = b_mat
             b_obj.active_material = b_mat
@@ -147,10 +160,13 @@ class ColladaImport(object):
                 bpy.ops.object.mode_set(mode='EDIT')
                 bpy.ops.mesh.normals_make_consistent()
                 bpy.ops.object.mode_set(mode='OBJECT')
+            #end if
 
             b_geoms.append(b_obj)
+        #end for
 
         return b_geoms
+    #end geometry
 
     def geometry_triangleset(self, triset, b_name, b_mat):
         if not self._transform('APPLY') and b_name in bpy.data.meshes:
@@ -186,8 +202,7 @@ class ColladaImport(object):
                         triset,
                         triset.texcoordset[j],
                         triset.texcoord_indexset[j],
-                        b_mesh,
-                        b_mat
+                        b_mesh
                       )
                 #end for
             #end if
@@ -196,7 +211,7 @@ class ColladaImport(object):
         #end if
     #end geometry_triangleset
 
-    def texcoord_layer(self, triset, texcoord, index, b_mesh, b_mat):
+    def texcoord_layer(self, triset, texcoord, index, b_mesh):
         uv = b_mesh.uv_layers.new()
         for i, f in enumerate(b_mesh.polygons):
             t1, t2, t3 = index[i]
@@ -204,9 +219,10 @@ class ColladaImport(object):
             if triset.vertex_index[i][2] == 0:
                 t1, t2, t3 = t3, t1, t2
             #end if
-            uv.data[f.loop_start].uv = texcoord[t1]
-            uv.data[f.loop_start + 1].uv = texcoord[t2]
-            uv.data[f.loop_start + 2].uv = texcoord[t3]
+            j = f.loop_start
+            uv.data[j].uv = texcoord[t1]
+            uv.data[j + 1].uv = texcoord[t2]
+            uv.data[j + 2].uv = texcoord[t3]
         #end for
     #end texcoord_layer
 
@@ -224,23 +240,201 @@ class ColladaImport(object):
                 b_obj.matrix_world = Matrix.Translation(light.position)
             elif isinstance(light.original, SpotLight):
                 b_lamp = bpy.data.lamps.new(b_name, type='SPOT')
+            #end if
+        #end if
+    #end light
+
+    class Material :
+        "interpretation of Collada material settings."
+
+        def __init__(self, parent, mat, b_name) :
+            self.parent = parent
+            rendering = \
+                { # initialize at instantiation time to allow overriding by subclasses
+                    "blinn" : self.rendering_blinn,
+                    "constant" : self.rendering_constant,
+                    "lambert" : self.rendering_lambert,
+                    "phong" : self.rendering_phong,
+                    "diffuse" : self.rendering_diffuse,
+                    "specular" : self.rendering_specular,
+                    "reflectivity" : self.rendering_reflectivity,
+                    "transparency" : self.rendering_transparency,
+                }
+            # self.mat = mat # not needed
+            self.images = {}
+            effect = mat.effect
+            self.effect = effect
+            b_mat = bpy.data.materials.new(b_name)
+            self.b_mat = b_mat
+            self.name = b_mat.name # name actually assigned by Blender
+            b_mat.use_nodes = True
+            b_shader = list(n for n in b_mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")[0]
+            self.b_shader = b_shader
+            self.node_x, self.node_y = b_shader.location
+            self.node_x -= 350
+            self.node_y += 200
+            self.tex_coords_src = None
+            rendering[effect.shadingtype]()
+            transparent_shadows = self.parent._kwargs.get('transparent_shadows', False)
+            b_mat.shadow_method = ("OPAQUE", "HASHED")[transparent_shadows]
+              # best I can do for non-Cycles
+            b_mat.cycles.use_transparent_shadow = transparent_shadows
+            if isinstance(effect.emission, tuple) :
+                b_shader.inputs["Emission"].default_value = effect.emission
+            # Map option NYI for now
+            #end if
+            self.rendering_transparency()
+            self.rendering_reflectivity()
+        #end __init__
+
+        def rendering_blinn(self):
+            # for the difference between Blinn (actually Blinn-Phong) and Phong shaders,
+            # see <https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model>
+            self.rendering_diffuse()
+            self.rendering_specular(True)
+        #end rendering_blinn
+
+        def rendering_constant(self):
+            pass # no real option for shadeless materials in current Blender renderers.
+        #end rendering_constant
+
+        def rendering_lambert(self):
+            self.rendering_diffuse()
+            self.b_shader.inputs["Specular"].default_value = 0
+        #end rendering_lambert
+
+        def rendering_phong(self):
+            self.rendering_diffuse()
+            self.rendering_specular(False)
+        #end rendering_phong
+
+        def rendering_diffuse(self):
+            self.color_or_texture(self.effect.diffuse, "diffuse", "Base Color")
+        #end rendering_diffuse
+
+        def rendering_specular(self, blinn = False):
+            effect = self.effect
+            b_shader = self.b_shader
+            if isinstance(effect.specular, tuple) :
+                b_shader.inputs["Specular"].default_value = 1.0
+                b_shader.inputs["Base Color"].default_value = effect.specular
+                  # might clash with diffuse colour, but hey
+            # Map option NYI for now
+            #end if
+            if isinstance(effect.shininess, Real) :
+                b_shader.inputs["Roughness"].default_value = \
+                    (1, 1 / 4)[blinn] / (1 + effect.shininess)
+            # Map option NYI for now
+            #end if
+        #end rendering_specular
+
+        def rendering_reflectivity(self):
+            effect = self.effect
+            b_shader = self.b_shader
+            if isinstance(effect.reflectivity, Real) and effect.reflectivity > 0 :
+                b_shader.inputs["Specular"].default_value = effect.reflectivity
+                if effect.reflective != None :
+                    self.color_or_texture(effect.reflective, "reflective", "Base Color")
+                      # might clash with diffuse colour, but hey
+                #end if
+            #end if
+        #end rendering_reflectivity
+
+        def rendering_transparency(self):
+            effect = self.effect
+            if effect.transparency == None :
+                return
+            b_mat = self.b_mat
+            b_shader = self.b_shader
+            if isinstance(effect.transparency, Real):
+                b_shader.inputs["Alpha"].default_value = effect.transparency
+                if effect.transparency < 1.0 :
+                    b_mat.blend_method = "BLEND"
+                    b_mat.diffuse_color[3] = effect.transparency
+                #end if
+            #end if
+            b_shader.inputs["Transmission"].default_value = \
+                (0.0, 1.0)[self.parent._kwargs.get('raytrace_transparency', False)]
+            if isinstance(effect.index_of_refraction, Real):
+                b_shader.inputs["IOR"].default_value = effect.index_of_refraction
+            #end if
+        #end rendering_transparency
+
+        @contextmanager
+        def _tmpwrite(self, relpath, data):
+            with NamedTemporaryFile(suffix='.' + relpath.split('.')[-1]) as out:
+                out.write(data)
+                out.flush()
+                yield out.name
+            #end with
+        #end _tmpwrite
+
+        def color_or_texture(self, color_or_texture, tex_name, shader_input_name):
+
+            def try_texture(c_image):
+                mtex = None
+                with self._tmpwrite(c_image.path, c_image.data) as tmpname:
+                    image = load_image(tmpname)
+                    if image != None:
+                        node_graph = self.b_mat.node_tree
+                        image.pack()
+                        # wipe all traces of original file path
+                        image.filepath = "//textures/%s" % os.path.split(c_image.path)[1]
+                        image.filepath_raw = image.filepath
+                        for item in image.packed_files :
+                            item.filepath = image.filepath
+                        #end for
+                        # todo: use image alpha as shader alpha (diffuse texture only)
+                        tex_image = node_graph.nodes.new("ShaderNodeTexImage")
+                        tex_image.location = (self.node_x, self.node_y)
+                        self.node_y -= 200
+                        tex_image.image = image
+                        if self.tex_coords_src == None :
+                            tex_coords_node = node_graph.nodes.new("ShaderNodeTexCoord")
+                            tex_coords_node.location = (self.node_x - 400, self.node_y)
+                            fanout_node = node_graph.nodes.new("NodeReroute")
+                            fanout_node.location = (self.node_x - 200, self.node_y - 200)
+                            node_graph.links.new \
+                              (
+                                tex_coords_node.outputs["UV"],
+                                fanout_node.inputs[0]
+                              )
+                            self.tex_coords_src = fanout_node.outputs[0]
+                        #end if
+                        node_graph.links.new(self.tex_coords_src, tex_image.inputs[0])
+                        self.images[tex_name] = image
+                        mtex = tex_image.outputs["Color"]
+                    #end if
+                return mtex
+            #end try_texture
+
+        #begin color_or_texture
+            if isinstance(color_or_texture, Map):
+                image = color_or_texture.sampler.surface.image
+                mtex = try_texture(image)
+                if mtex == None :
+                    mtex = (1, 0, 1, 1) # same hideous colour Blender uses
+                #end if
+            elif isinstance(color_or_texture, tuple):
+                mtex = color_or_texture
+            else :
+                mtex = None
+            #end if
+            shader_input = self.b_shader.inputs[shader_input_name]
+            if isinstance(mtex, tuple):
+                shader_input.default_value = mtex
+            elif isinstance(mtex, bpy.types.NodeSocket) :
+                self.b_mat.node_tree.links.new(mtex, shader_input)
+            #end if
+        #end color_or_texture
+
+    #end Material
 
     def material(self, mat, b_name):
-        effect = mat.effect
-        b_mat = bpy.data.materials.new(b_name)
-        b_name = b_mat.name
-        if False : # TBD
-            b_mat.diffuse_shader = 'LAMBERT'
-            getattr(self, 'rendering_' + \
-                    effect.shadingtype)(mat, b_mat)
-            bpy.data.materials[b_name].use_transparent_shadows = \
-                    self._kwargs.get('transparent_shadows', False)
-            if effect.emission:
-                b_mat.emit = sum(effect.emission[:3]) / 3.0
-            self.rendering_transparency(effect, b_mat)
-            self.rendering_reflectivity(effect, b_mat)
-        #end if
-        return b_name
+        matctx = type(self).Material(self, mat, b_name)
+          # all material setup happens here
+        return matctx.name
+    #end material
 
     def node(self, node, parent):
         if isinstance(node, (Node, NodeNode)):
@@ -255,92 +449,10 @@ class ColladaImport(object):
                 b_geoms = self.geometry(bgeom)
                 for b_obj in b_geoms:
                     b_obj.parent = parent
+                #end for
+            #end for
         return parent
-
-    def rendering_blinn(self, mat, b_mat):
-        effect = mat.effect
-        b_mat.specular_shader = 'BLINN'
-        self.rendering_diffuse(effect.diffuse, b_mat)
-        self.rendering_specular(effect, b_mat)
-
-    def rendering_constant(self, mat, b_mat):
-        b_mat.use_shadeless = True
-
-    def rendering_lambert(self, mat, b_mat):
-        effect = mat.effect
-        self.rendering_diffuse(effect.diffuse, b_mat)
-        b_mat.specular_intensity = 0.0
-
-    def rendering_phong(self, mat, b_mat):
-        effect = mat.effect
-        b_mat.specular_shader = 'PHONG'
-        self.rendering_diffuse(effect.diffuse, b_mat)
-        self.rendering_specular(effect, b_mat)
-
-    def rendering_diffuse(self, diffuse, b_mat):
-        b_mat.diffuse_intensity = 1.0
-        diff = self.color_or_texture(diffuse, b_mat)
-        if isinstance(diff, tuple):
-            b_mat.diffuse_color = diff
-        else:
-            diff.use_map_color_diffuse = True
-
-    def rendering_specular(self, effect, b_mat):
-        if effect.specular:
-            b_mat.specular_intensity = 1.0
-            b_mat.specular_color = effect.specular[:3]
-        if effect.shininess:
-            b_mat.specular_hardness = effect.shininess
-
-    def rendering_reflectivity(self, effect, b_mat):
-        if effect.reflectivity and effect.reflectivity > 0:
-            b_mat.raytrace_mirror.use = True
-            b_mat.raytrace_mirror.reflect_factor = effect.reflectivity
-            if effect.reflective:
-                refi = self.color_or_texture(effect.reflective, b_mat)
-                if isinstance(refi, tuple):
-                    b_mat.mirror_color = refi
-                else:
-                    # TODO use_map_mirror or use_map_raymir ?
-                    pass
-
-    def rendering_transparency(self, effect, b_mat):
-        if not effect.transparency:
-            return
-        if isinstance(effect.transparency, float):
-            if effect.transparency < 1.0:
-                b_mat.use_transparency = True
-                b_mat.alpha = effect.transparency
-        if self._kwargs.get('raytrace_transparency', False):
-            b_mat.transparency_method = 'RAYTRACE'
-            b_mat.raytrace_transparency.ior = 1.0
-            b_mat.raytrace_transparency.depth = TRANSPARENCY_RAY_DEPTH
-        if isinstance(effect.index_of_refraction, float):
-            b_mat.transparency_method = 'RAYTRACE'
-            b_mat.raytrace_transparency.ior = effect.index_of_refraction
-            b_mat.raytrace_transparency.depth = TRANSPARENCY_RAY_DEPTH
-
-    def color_or_texture(self, color_or_texture, b_mat):
-        if isinstance(color_or_texture, Map):
-            image = color_or_texture.sampler.surface.image
-            mtex = self.try_texture(image, b_mat)
-            return mtex or (1., 0., 0.)
-        elif isinstance(color_or_texture, tuple):
-            return color_or_texture[:3]
-
-    def try_texture(self, c_image, b_mat):
-        mtex = None
-        with self._tmpwrite(c_image.path, c_image.data) as tmp:
-            image = load_image(tmp)
-            if image is not None:
-                image.pack(True)
-                texture = bpy.data.textures.new(name='Kd', type='IMAGE')
-                texture.image = image
-                mtex = b_mat.texture_slots.add()
-                mtex.texture_coords = 'UV'
-                mtex.texture = texture
-                self._images[b_mat.name] = image
-        return mtex
+    #end node
 
     def name(self, obj, index=0):
         """ Trying to get efficient and human readable name, workarounds
@@ -356,80 +468,68 @@ class ColladaImport(object):
             self._namecount += 1
             self._names[base] = '%s-%.4d' % (base[:MAX_NAME_LENGTH], self._namecount)
         return self._names[base]
-
-    @contextmanager
-    def _tmpwrite(self, relpath, data):
-        with NamedTemporaryFile(suffix='.' + relpath.split('.')[-1]) as out:
-            out.write(data)
-            out.flush()
-            yield out.name
+    #end name
 
     def _transform(self, t):
         return self._kwargs['transformation'] == t
+    #end _transform
 
+#end ColladaImport
 
 class SketchUpImport(ColladaImport):
     """ SketchUp specific COLLADA import. """
 
-    def rendering_diffuse(self, diffuse, b_mat):
-        """ Imports PNG textures with alpha channel. """
-        ColladaImport.rendering_diffuse(self, diffuse, b_mat)
-        if isinstance(diffuse, Map):
-            if b_mat.name in self._images:
-                image = self._images[b_mat.name]
-                if image.depth == 32:
-                    diffslot = None
-                    for ts in b_mat.texture_slots:
-                        if ts and ts.use_map_color_diffuse:
-                            diffslot = ts
-                            break
-                    if not diffslot:
-                        return
-                    image.use_alpha = True
-                    diffslot.use_map_alpha = True
-                    tex = diffslot.texture
-                    tex.use_mipmap = True
-                    tex.use_interpolation = True
-                    tex.use_alpha = True
-                    b_mat.use_transparency = True
-                    b_mat.alpha = 0.0
-                    if self._kwargs.get('raytrace_transparency', False):
-                        b_mat.transparency_method = 'RAYTRACE'
-                        b_mat.raytrace_transparency.ior = 1.0
-                        b_mat.raytrace_transparency.depth = TRANSPARENCY_RAY_DEPTH
+    class Material(ColladaImport.Material) :
 
-    def rendering_phong(self, mat, b_mat):
-        super().rendering_lambert(mat, b_mat)
+        def rendering_phong(self):
+            super().rendering_lambert()
+        #end rendering_phong
 
-    def rendering_reflectivity(self, effect, b_mat):
-        """ There are no reflectivity controls in SketchUp """
-        if not self.__class__.test2(effect.xmlnode):
-            ColladaImport.rendering_reflectivity(self, effect, b_mat)
+        def rendering_reflectivity(self):
+            """ There are no reflectivity controls in SketchUp """
+            if not self.parent.match_test2(self.effect.xmlnode) :
+                super().rendering_reflectivity()
+            #end if
+        #end rendering_reflectivity
+
+    #end Material
+
+    @staticmethod
+    def match_test2(xml):
+        return \
+            any \
+              (
+                t.get('profile') == 'GOOGLEEARTH'
+                for t in xml.findall('.//dae:extra/dae:technique', namespaces = DAE_NS)
+              )
+    #end match_test2
 
     @classmethod
-    def match(cls, collada):
+    def match(celf, collada):
+        "Does this look like a Collada file from SketchUp."
+
+        def test1(xml):
+            return \
+                any \
+                  (
+                    'SketchUp' in s
+                    for s in
+                        (
+                            xml.find('.//dae:instance_visual_scene', namespaces = DAE_NS).get('url'),
+                            xml.find('.//dae:authoring_tool', namespaces = DAE_NS),
+                        )
+                    if s != None
+                  )
+        #end test1
+
+    #begin match
         xml = collada.xmlnode
-        return cls.test1(xml) or cls.test2(xml)
+        return test1(xml) or celf.match_test2(xml)
+    #end match
 
-    @classmethod
-    def test1(cls, xml):
-        src = [xml.find('.//dae:instance_visual_scene',
-                    namespaces=DAE_NS).get('url')]
-        at = xml.find('.//dae:authoring_tool', namespaces=DAE_NS)
-        if at is not None:
-            src.append(at.text)
-        return any(['SketchUp' in s for s in src if s])
-
-    @classmethod
-    def test2(cls, xml):
-        et = xml.findall('.//dae:extra/dae:technique',
-                namespaces=DAE_NS)
-        return len(et) and any([
-            t.get('profile') == 'GOOGLEEARTH'
-            for t in et])
+#end SketchUpImport
 
 VENDOR_SPECIFIC.append(SketchUpImport)
-
 
 def _is_flat_face(normal):
     a = Vector(normal[0])
