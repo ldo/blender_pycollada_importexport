@@ -275,6 +275,7 @@ class ColladaImport:
             self.node_y += 200
             self.tex_coords_src = None
             rendering[effect.shadingtype]()
+            b_mat.use_backface_culling = not effect.double_sided
             transparent_shadows = self.parent._kwargs.get('transparent_shadows', False)
             b_mat.shadow_method = ("OPAQUE", "HASHED")[transparent_shadows]
               # best I can do for non-Cycles
