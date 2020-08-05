@@ -346,7 +346,7 @@ class ColladaImport:
             if effect.transparency == None :
                 return
             opaque_mode = effect.opaque_mode
-            flip = opaque_mode in ("A_ONE", "RGB_ONE")
+            flip = opaque_mode in ("A_ZERO", "RGB_ZERO")
             # RGB_ONE/ZERO opacity modes NYI, treat as A_ONE/ZERO modes for now
             b_mat = self.b_mat
             b_shader = self.b_shader
