@@ -255,10 +255,6 @@ class ColladaImport:
                     "constant" : self.rendering_constant,
                     "lambert" : self.rendering_lambert,
                     "phong" : self.rendering_phong,
-                    "diffuse" : self.rendering_diffuse,
-                    "specular" : self.rendering_specular,
-                    "reflectivity" : self.rendering_reflectivity,
-                    "transparency" : self.rendering_transparency,
                 }
             # self.mat = mat # not needed
             self.images = {}
@@ -286,7 +282,25 @@ class ColladaImport:
             #end if
             self.rendering_transparency()
             self.rendering_reflectivity()
+            self.rendering_emission()
         #end __init__
+
+        def rendering_constant(self):
+            self.color_or_texture(self.effect.diffuse, "diffuse", "Emission")
+        #end rendering_constant
+
+        def rendering_lambert(self):
+            self.rendering_diffuse()
+            inputs = self.b_shader.inputs
+            inputs["Specular"].default_value = 0
+            inputs["Metallic"].default_value = 0
+            inputs["Roughness"].default_value = 1
+        #end rendering_lambert
+
+        def rendering_phong(self):
+            self.rendering_diffuse()
+            self.rendering_specular(False)
+        #end rendering_phong
 
         def rendering_blinn(self):
             # for the difference between Blinn (actually Blinn-Phong) and Phong shaders,
@@ -295,22 +309,8 @@ class ColladaImport:
             self.rendering_specular(True)
         #end rendering_blinn
 
-        def rendering_constant(self):
-            pass # no real option for shadeless materials in current Blender renderers.
-        #end rendering_constant
-
-        def rendering_lambert(self):
-            self.rendering_diffuse()
-            self.b_shader.inputs["Specular"].default_value = 0
-        #end rendering_lambert
-
-        def rendering_phong(self):
-            self.rendering_diffuse()
-            self.rendering_specular(False)
-        #end rendering_phong
-
         def rendering_diffuse(self):
-            self.color_or_texture(self.effect.diffuse, "diffuse", "Base Color")
+            self.color_or_texture(self.effect.diffuse, "diffuse", "Base Color", True)
         #end rendering_diffuse
 
         def rendering_specular(self, blinn = False):
@@ -345,13 +345,20 @@ class ColladaImport:
             effect = self.effect
             if effect.transparency == None :
                 return
+            opaque_mode = effect.opaque_mode
+            flip = opaque_mode in ("A_ONE", "RGB_ONE")
+            # RGB_ONE/ZERO opacity modes NYI, treat as A_ONE/ZERO modes for now
             b_mat = self.b_mat
             b_shader = self.b_shader
             if isinstance(effect.transparency, Real):
-                b_shader.inputs["Alpha"].default_value = effect.transparency
-                if effect.transparency < 1.0 :
+                alpha = effect.transparency
+                if flip :
+                    alpha = 1 - alpha
+                #end if
+                b_shader.inputs["Alpha"].default_value = alpha
+                if alpha < 1.0 :
                     b_mat.blend_method = "BLEND"
-                    b_mat.diffuse_color[3] = effect.transparency
+                    b_mat.diffuse_color[3] = alpha
                 #end if
             #end if
             b_shader.inputs["Transmission"].default_value = \
@@ -360,6 +367,10 @@ class ColladaImport:
                 b_shader.inputs["IOR"].default_value = effect.index_of_refraction
             #end if
         #end rendering_transparency
+
+        def rendering_emission(self) :
+            self.color_or_texture(self.effect.emission, "emission", "Emission")
+        #end rendering_emission
 
         @contextmanager
         def _tmpwrite(self, relpath, data):
@@ -370,7 +381,7 @@ class ColladaImport:
             #end with
         #end _tmpwrite
 
-        def color_or_texture(self, color_or_texture, tex_name, shader_input_name):
+        def color_or_texture(self, color_or_texture, tex_name, shader_input_name, set_mat_color = False):
 
             def try_texture(c_image):
                 mtex = None
@@ -424,6 +435,9 @@ class ColladaImport:
             shader_input = self.b_shader.inputs[shader_input_name]
             if isinstance(mtex, tuple):
                 shader_input.default_value = mtex
+                if set_mat_color :
+                    self.b_mat.diffuse_color[:3] = mtex[:3]
+                #end if
             elif isinstance(mtex, bpy.types.NodeSocket) :
                 self.b_mat.node_tree.links.new(mtex, shader_input)
             #end if
