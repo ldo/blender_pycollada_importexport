@@ -26,6 +26,7 @@ VENDOR_SPECIFIC = []
 COLLADA_NS      = "http://www.collada.org/2005/11/COLLADASchema"
 DAE_NS          = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
+DEG = math.pi / 180
 
 def load(op, ctx, filepath = None, **kwargs) :
     c = Collada(filepath, ignore = [DaeBrokenRefError])
@@ -92,26 +93,65 @@ class ColladaImport :
             else :
                 b_cam.lens_unit = prop.default
             #end if
-            b_cam.angle = math.radians \
-              (
-                max
-                  ( # fixme: these “or”-clauses seem pointless
-                    bcam.xfov or bcam.yfov,
-                    bcam.yfov or bcam.xfov
-                  )
-              )
+            b_cam.angle = \
+                max \
+                  (( # “None” marks cases which shouldn’t occur
+                        None, # bcam.aspect_ratio = None and bcam.yfov = None and bcam.xfov = None
+                        None, # bcam.aspect_ratio = None and bcam.yfov = None and bcam.xfov ≠ None
+                        None, # bcam.aspect_ratio = None and bcam.yfov ≠ None and bcam.xfov = None
+                        lambda : (bcam.yfov * DEG, bcam.xfov * DEG),
+                          # bcam.aspect_ratio = None and bcam.yfov ≠ None and bcam.xfov ≠ None
+                        None, # bcam.aspect_ratio ≠ None and bcam.yfov = None and bcam.xfov = None
+                        lambda :
+                            (
+                                2 * math.atan(math.tan(bcam.xfov * DEG / 2) / bcam.aspect_ratio),
+                                bcam.xfov * DEG
+                            ),
+                          # bcam.aspect_ratio ≠ None and bcam.yfov = None and bcam.xfov ≠ None
+                        lambda :
+                            (
+                                bcam.yfov * DEG,
+                                2 * math.atan(math.tan(bcam.yfov * DEG / 2) * bcam.aspect_ratio)
+                            ),
+                          # bcam.aspect_ratio ≠ None and bcam.yfov ≠ None and bcam.xfov = None
+                        None, # bcam.aspect_ratio ≠ None and bcam.yfov ≠ None and bcam.xfov ≠ None
+                  )[
+                        (bcam.aspect_ratio != None) << 2
+                    |
+                        (bcam.yfov != None) << 1
+                    |
+                        (bcam.xfov != None)
+                  ]()
+                )
         elif isinstance(bcam.original, OrthographicCamera) :
             b_cam.type = "ORTHO"
-            b_cam.ortho_scale = max \
-              ( # fixme: these “or”-clauses seem pointless
-                bcam.xmag or bcam.ymag,
-                bcam.ymag or bcam.xmag
-              )
+            b_cam.ortho_scale = \
+                max \
+                  (( # “None” marks cases which shouldn’t occur
+                        None, # bcam.aspect_ratio = None and bcam.ymag = None and bcam.xmag = None
+                        None, # bcam.aspect_ratio = None and bcam.ymag = None and bcam.xmag ≠ None
+                        None, # bcam.aspect_ratio = None and bcam.ymag ≠ None and bcam.xmag = None
+                        lambda : (bcam.ymag, bcam.xmag),
+                          # bcam.aspect_ratio = None and bcam.ymag ≠ None and bcam.xmag ≠ None
+                        None, # bcam.aspect_ratio ≠ None and bcam.ymag = None and bcam.xmag = None
+                        lambda : (bcam.xmag / bcam.aspect_ratio, bcam.xmag),
+                          # bcam.aspect_ratio ≠ None and bcam.ymag = None and bcam.xmag ≠ None
+                        lambda : (bcam.ymag, bcam.ymag * bcam.aspect_ratio),
+                          # bcam.aspect_ratio ≠ None and bcam.ymag ≠ None and bcam.xmag = None
+                        None, # bcam.aspect_ratio ≠ None and bcam.ymag ≠ None and bcam.xmag ≠ None
+                  )[
+                        (bcam.aspect_ratio != None) << 2
+                    |
+                        (bcam.ymag != None) << 1
+                    |
+                        (bcam.xmag != None)
+                  ]()
+                )
         #end if
-        if bcam.znear :
+        if bcam.znear != None :
             b_cam.clip_start = bcam.znear
         #end if
-        if bcam.zfar :
+        if bcam.zfar != None :
             b_cam.clip_end = bcam.zfar
         #end if
     #end camera
