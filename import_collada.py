@@ -25,7 +25,7 @@ __all__ = ["load"]
 VENDOR_SPECIFIC = []
 COLLADA_NS      = "http://www.collada.org/2005/11/COLLADASchema"
 DAE_NS          = {"dae": COLLADA_NS}
-MAX_NAME_LENGTH        = 27
+MAX_NAME_LENGTH = 63
 
 def load(op, ctx, filepath = None, **kwargs) :
     c = Collada(filepath, ignore = [DaeBrokenRefError])
@@ -516,7 +516,8 @@ class ColladaImport:
         base = "%s-%d" % (uid, index)
         if base not in self._names:
             self._namecount += 1
-            self._names[base] = "%s-%.4d" % (base[:MAX_NAME_LENGTH], self._namecount)
+            suffix = "-%.4d" % self._namecount
+            self._names[base] = base[:MAX_NAME_LENGTH - len(suffix)] + suffix
         return self._names[base]
     #end name
 
