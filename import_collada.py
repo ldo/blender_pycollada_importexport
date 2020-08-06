@@ -1,9 +1,10 @@
+import sys
 import os
 import math
 from numbers import \
     Real
-from tempfile import NamedTemporaryFile
-from contextlib import contextmanager
+import tempfile
+import shutil
 
 import bpy
 from bpy_extras.image_utils import load_image
@@ -249,6 +250,7 @@ class ColladaImport:
 
         def __init__(self, parent, mat, b_name) :
             self.parent = parent
+            self.tempdir = None
             rendering = \
                 { # initialize at instantiation time to allow overriding by subclasses
                     "blinn" : self.rendering_blinn,
@@ -372,51 +374,59 @@ class ColladaImport:
             self.color_or_texture(self.effect.emission, "emission", "Emission")
         #end rendering_emission
 
-        @contextmanager
-        def _tmpwrite(self, relpath, data):
-            with NamedTemporaryFile(suffix='.' + relpath.split('.')[-1]) as out:
-                out.write(data)
-                out.flush()
-                yield out.name
-            #end with
-        #end _tmpwrite
-
         def color_or_texture(self, color_or_texture, tex_name, shader_input_name, set_mat_color = False):
 
             def try_texture(c_image):
-                mtex = None
-                with self._tmpwrite(c_image.path, c_image.data) as tmpname:
-                    image = load_image(tmpname)
-                    if image != None:
-                        node_graph = self.b_mat.node_tree
-                        image.pack()
-                        # wipe all traces of original file path
-                        image.filepath = "//textures/%s" % os.path.split(c_image.path)[1]
-                        image.filepath_raw = image.filepath
-                        for item in image.packed_files :
-                            item.filepath = image.filepath
-                        #end for
-                        # todo: use image alpha as shader alpha (diffuse texture only)
-                        tex_image = node_graph.nodes.new("ShaderNodeTexImage")
-                        tex_image.location = (self.node_x, self.node_y)
-                        self.node_y -= 200
-                        tex_image.image = image
-                        if self.tex_coords_src == None :
-                            tex_coords_node = node_graph.nodes.new("ShaderNodeTexCoord")
-                            tex_coords_node.location = (self.node_x - 400, self.node_y)
-                            fanout_node = node_graph.nodes.new("NodeReroute")
-                            fanout_node.location = (self.node_x - 200, self.node_y - 200)
-                            node_graph.links.new \
-                              (
-                                tex_coords_node.outputs["UV"],
-                                fanout_node.inputs[0]
-                              )
-                            self.tex_coords_src = fanout_node.outputs[0]
-                        #end if
-                        node_graph.links.new(self.tex_coords_src, tex_image.inputs[0])
-                        self.images[tex_name] = image
-                        mtex = tex_image.outputs["Color"]
+                basename = os.path.split(c_image.path)[1]
+                imgfile_name = os.path.join(self.create_tempdir(), basename)
+                imgfile = open(imgfile_name, "wb")
+                imgfile.write(c_image.data)
+                imgfile.close()
+                imgfile = None
+                try :
+                    image = bpy.data.images.load(imgfile_name)
+                except RuntimeError as fail :
+                    sys.stderr.write \
+                      (
+                            "Error trying to load image file %s from %s: %s\n"
+                        %
+                            (repr(c_image.path), repr(imgfile_name), str(fail))
+                      )
+                    image = None
+                #end try
+                if image != None :
+                    node_graph = self.b_mat.node_tree
+                    image.pack()
+                    # wipe all traces of original file path
+                    image.filepath = "//textures/%s" % basename
+                    image.filepath_raw = image.filepath
+                    for item in image.packed_files :
+                        item.filepath = image.filepath
+                    #end for
+                    # todo: use image alpha as shader alpha (diffuse texture only)
+                    tex_image = node_graph.nodes.new("ShaderNodeTexImage")
+                    tex_image.location = (self.node_x, self.node_y)
+                    self.node_y -= 200
+                    tex_image.image = image
+                    if self.tex_coords_src == None :
+                        tex_coords_node = node_graph.nodes.new("ShaderNodeTexCoord")
+                        tex_coords_node.location = (self.node_x - 400, self.node_y)
+                        fanout_node = node_graph.nodes.new("NodeReroute")
+                        fanout_node.location = (self.node_x - 200, self.node_y - 200)
+                        node_graph.links.new \
+                          (
+                            tex_coords_node.outputs["UV"],
+                            fanout_node.inputs[0]
+                          )
+                        self.tex_coords_src = fanout_node.outputs[0]
                     #end if
+                    node_graph.links.new(self.tex_coords_src, tex_image.inputs[0])
+                    self.images[tex_name] = image
+                    mtex = tex_image.outputs["Color"]
+                else :
+                    mtex = None
+                #end if
+                # could delete imgfile_name at this point
                 return mtex
             #end try_texture
 
@@ -443,11 +453,26 @@ class ColladaImport:
             #end if
         #end color_or_texture
 
+        def create_tempdir(self) :
+            if self.tempdir == None :
+                self.tempdir = tempfile.mkdtemp(prefix = "bpycollada-import-")
+            #end if
+            return self.tempdir
+        #end create_tempdir
+
+        def cleanup_tempdir(self) :
+            if self.tempdir != None :
+                shutil.rmtree(self.tempdir, ignore_errors = True)
+                self.tempdir = None
+            #end if
+        #end cleanup_tempdir
+
     #end Material
 
     def material(self, mat, b_name):
         matctx = type(self).Material(self, mat, b_name)
           # all material setup happens here
+        matctx.cleanup_tempdir()
         return matctx.name
     #end material
 
