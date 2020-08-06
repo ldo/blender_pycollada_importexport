@@ -12,47 +12,39 @@ from collada.scene import GeometryNode, MaterialNode
 from collada.scene import MatrixTransform
 from collada.source import FloatSource, InputList
 
-def save(op, context,
-        filepath=None,
-        directory=None,
-        export_as=None,
-        **kwargs):
-
+def save(op, context, filepath = None, directory = None, export_as = None, **kwargs) :
     ex = ColladaExport(directory, export_as)
-
-    for o in context.scene.objects:
+    for o in context.scene.objects :
         ex.object(o)
     #end for
-
     ex.save(filepath)
-
-    return {'FINISHED'}
+    return {"FINISHED"}
 #end save
 
-class ColladaExport:
+class ColladaExport :
 
-    def __init__(self, directory, export_as='dae_only'):
+    def __init__(self, directory, export_as = "dae_only") :
         self._dir = directory
-        self._export_as = export_as
+        self._export_as = export_as # TODO: NYI
         self._geometries = {}
         self._materials = {}
         self._collada = Collada()
 
-        self._scene = Scene('main', [])
+        self._scene = Scene("main", [])
         self._collada.scenes.append(self._scene)
         self._collada.scene = self._scene
     #end __init__
 
-    def save(self, fp):
+    def save(self, fp) :
         self._collada.write(fp)
     #end save
 
-    def object(self, b_obj, parent = None, do_children = True):
+    def object(self, b_obj, parent = None, do_children = True) :
         b_matrix = b_obj.matrix_world
         if parent != None :
             if do_children :
                 b_matrix = b_obj.matrix_local
-            else:
+            else :
                 b_matrix = Matrix()
             #end if
         #end if
@@ -70,7 +62,7 @@ class ColladaExport:
 
         if parent != None :
             parent.children.append(node)
-        else:
+        else :
             self._scene.nodes.append(node)
         #end if
 
@@ -80,9 +72,9 @@ class ColladaExport:
         #end if
     #end object
 
-    def node(self, b_name, b_matrix=None):
+    def node(self, b_name, b_matrix = None) :
         tf = []
-        if b_matrix:
+        if b_matrix :
             tf.append(self.matrix(b_matrix))
         #end if
         node = Node(b_name, transforms=tf)
@@ -90,20 +82,19 @@ class ColladaExport:
         return node
     #end node
 
-    def obj_MESH(self, b_obj):
+    def obj_MESH(self, b_obj) :
         geom = self._geometries.get(b_obj.data.name, None)
-        if not geom:
+        if not geom :
             geom = self.mesh(b_obj.data)
             self._geometries[b_obj.data.name] = geom
         #end if
         matnodes = []
-        for slot in b_obj.material_slots:
+        for slot in b_obj.material_slots :
             sname = slot.material.name
-            if sname not in self._materials:
+            if sname not in self._materials :
                 self._materials[sname] = self.material(slot.material)
             #end if
-            matnodes.append(MaterialNode('none', self._materials[sname],
-                inputs=[]))
+            matnodes.append(MaterialNode("none", self._materials[sname], inputs = []))
         #end for
         return [GeometryNode(geom, matnodes)]
     #end obj_MESH
@@ -113,65 +104,65 @@ class ColladaExport:
             "MESH" : obj_MESH,
         }
 
-    def mesh(self, b_mesh):
-        vert_srcid = b_mesh.name + '-vertary'
+    def mesh(self, b_mesh) :
+        vert_srcid = b_mesh.name + "-vertary"
         vert_f = [c for v in b_mesh.vertices for c in v.co]
-        vert_src = FloatSource(vert_srcid, np.array(vert_f), ('X', 'Y', 'Z'))
+        vert_src = FloatSource(vert_srcid, np.array(vert_f), ("X", "Y", "Z"))
 
         sources = [vert_src]
 
-        smooth = list(filter(lambda f: f.use_smooth, b_mesh.polygons))
-        if any(smooth):
-            vnorm_srcid = b_mesh.name + '-vnormary'
+        smooth = list(filter(lambda f : f.use_smooth, b_mesh.polygons))
+        if any(smooth) :
+            vnorm_srcid = b_mesh.name + "-vnormary"
             norm_f = [c for v in b_mesh.vertices for c in v.normal]
-            norm_src = FloatSource(vnorm_srcid, np.array(norm_f), ('X', 'Y', 'Z'))
+            norm_src = FloatSource(vnorm_srcid, np.array(norm_f), ("X", "Y", "Z"))
             sources.append(norm_src)
         #end if
-        flat = list(filter(lambda f: not f.use_smooth, b_mesh.polygons))
-        if any(flat):
-            fnorm_srcid = b_mesh.name + '-fnormary'
+        flat = list(filter(lambda f : not f.use_smooth, b_mesh.polygons))
+        if any(flat) :
+            fnorm_srcid = b_mesh.name + "-fnormary"
             norm_f = [c for f in flat for c in f.normal]
-            norm_src = FloatSource(fnorm_srcid, np.array(norm_f), ('X', 'Y', 'Z'))
+            norm_src = FloatSource(fnorm_srcid, np.array(norm_f), ("X", "Y", "Z"))
             sources.append(norm_src)
         #end if
 
-        name = b_mesh.name + '-geom'
+        name = b_mesh.name + "-geom"
         geom = Geometry(self._collada, name, name, sources)
 
-        if any(smooth):
+        if any(smooth) :
             ilist = InputList()
-            ilist.addInput(0, 'VERTEX', _url(vert_srcid))
-            ilist.addInput(1, 'NORMAL', _url(vnorm_srcid))
+            ilist.addInput(0, "VERTEX", _url(vert_srcid))
+            ilist.addInput(1, "NORMAL", _url(vnorm_srcid))
             # per vertex normals
             indices = np.array([
                 i for v in [
                     (v, v) for f in smooth for v in f.vertices
                 ] for i in v])
-            if _is_trimesh(smooth):
-                p = geom.createTriangleSet(indices, ilist, 'none')
-            else:
+            if _is_trimesh(smooth) :
+                p = geom.createTriangleSet(indices, ilist, "none")
+            else :
                 vcount = [len(f.vertices) for f in smooth]
-                p = geom.createPolylist(indices, vcount, ilist, 'none')
+                p = geom.createPolylist(indices, vcount, ilist, "none")
             #end if
             geom.primitives.append(p)
         #end if
-        if any(flat):
+        if any(flat) :
             ilist = InputList()
-            ilist.addInput(0, 'VERTEX', _url(vert_srcid))
-            ilist.addInput(1, 'NORMAL', _url(fnorm_srcid))
+            ilist.addInput(0, "VERTEX", _url(vert_srcid))
+            ilist.addInput(1, "NORMAL", _url(fnorm_srcid))
             indices = []
             # per face normals
-            for i, f in enumerate(flat):
-                for v in f.vertices:
+            for i, f in enumerate(flat) :
+                for v in f.vertices :
                     indices.extend([v, i])
                 #end for
             #end for
             indices = np.array(indices)
-            if _is_trimesh(flat):
-                p = geom.createTriangleSet(indices, ilist, 'none')
-            else:
+            if _is_trimesh(flat) :
+                p = geom.createTriangleSet(indices, ilist, "none")
+            else :
                 vcount = [len(f.vertices) for f in flat]
-                p = geom.createPolylist(indices, vcount, ilist, 'none')
+                p = geom.createPolylist(indices, vcount, ilist, "none")
             #end if
             geom.primitives.append(p)
         #end if
@@ -180,7 +171,7 @@ class ColladaExport:
         return geom
     #end mesh
 
-    def material(self, b_mat):
+    def material(self, b_mat) :
         shader = "lambert"
         effect_kwargs = \
             {
@@ -266,14 +257,14 @@ class ColladaExport:
                 #end if
             #end if
         #end if
-        effect = Effect(b_mat.name + '-fx', [], shader, **effect_kwargs)
+        effect = Effect(b_mat.name + "-fx", [], shader, **effect_kwargs)
         mat = Material(b_mat.name, b_mat.name, effect)
         self._collada.effects.append(effect)
         self._collada.materials.append(mat)
         return mat
     #end material
 
-    def matrix(self, b_matrix):
+    def matrix(self, b_matrix) :
         f = tuple(map(tuple, b_matrix.transposed()))
         return MatrixTransform(np.array(
             [e for r in f for e in r], dtype=np.float32))
@@ -281,11 +272,11 @@ class ColladaExport:
 
 #end ColladaExport
 
-def _is_trimesh(faces):
+def _is_trimesh(faces) :
     return all([len(f.vertices) == 3 for f in faces])
 #end _is_trimesh
 
-def _url(uid):
-    return '#' + uid
+def _url(uid) :
+    return "#" + uid
 #end _url
 

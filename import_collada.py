@@ -20,50 +20,50 @@ from collada.primitive import BoundPrimitive
 from collada.scene import Scene, Node, NodeNode, GeometryNode
 from collada.triangleset import TriangleSet, BoundTriangleSet
 
-
-__all__ = ['load']
+__all__ = ["load"]
 
 VENDOR_SPECIFIC = []
-COLLADA_NS      = 'http://www.collada.org/2005/11/COLLADASchema'
-DAE_NS          = {'dae': COLLADA_NS}
-TRANSPARENCY_RAY_DEPTH = 8
+COLLADA_NS      = "http://www.collada.org/2005/11/COLLADASchema"
+DAE_NS          = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH        = 27
 
-
-def load(op, ctx, filepath=None, **kwargs):
-    c = Collada(filepath, ignore=[DaeBrokenRefError])
+def load(op, ctx, filepath = None, **kwargs) :
+    c = Collada(filepath, ignore = [DaeBrokenRefError])
     impclass = get_import(c)
     imp = impclass(ctx, c, os.path.dirname(filepath), **kwargs)
-
-    tf = kwargs['transformation']
-
-    if tf in ('MUL', 'APPLY'):
-        for i, obj in enumerate(c.scene.objects('geometry')):
+    tf = kwargs["transformation"]
+    if tf in ("MUL", "APPLY"):
+        for i, obj in enumerate(c.scene.objects("geometry")):
             b_geoms = imp.geometry(obj)
-            if tf == 'MUL':
+            if tf == "MUL":
                 tf_mat = Matrix(obj.matrix)
                 for b_obj in b_geoms:
                     b_obj.matrix_world = tf_mat
-    elif tf == 'PARENT':
+    elif tf == "PARENT":
         _dfs(c.scene, imp.node)
-
-    for i, obj in enumerate(c.scene.objects('light')):
+    #end if
+    for i, obj in enumerate(c.scene.objects("light")):
         imp.light(obj, i)
-
-    for obj in c.scene.objects('camera'):
+    #end for
+    for obj in c.scene.objects("camera"):
         imp.camera(obj)
+    #end for
+    return {"FINISHED"}
+#end load
 
-    return {'FINISHED'}
-
-def get_import(collada):
-    for i in VENDOR_SPECIFIC:
-        if i.match(collada):
+def get_import(collada) :
+    "returns a suitable importer for the given Collada object according" \
+    " to any vendor-specific features found."
+    for i in VENDOR_SPECIFIC :
+        if i.match(collada) :
             return i
+    #end for
     return ColladaImport
-
+#end get_import
 
 class ColladaImport:
-    """ Standard COLLADA importer. """
+    "Standard COLLADA importer. Subclasses can implement a “match” method" \
+    " to identify vendor-specific features they need to handle."
 
     def __init__(self, ctx, collada, basedir, **kwargs):
         self._ctx = ctx
@@ -73,29 +73,37 @@ class ColladaImport:
         self._names = {}
     #end __init__
 
-    def camera(self, bcam):
-        bpy.ops.object.add(type='CAMERA')
+    def camera(self, bcam) :
+        bpy.ops.object.add(type = "CAMERA")
         b_obj = self._ctx.object
         b_obj.name = self.name(bcam.original, id(bcam))
         b_obj.matrix_world = Matrix(bcam.matrix)
         b_cam = b_obj.data
-        if isinstance(bcam.original, PerspectiveCamera):
-            b_cam.type = 'PERSP'
-            prop = b_cam.bl_rna.properties.get('lens_unit')
-            if 'DEGREES' in prop.enum_items:
-                b_cam.lens_unit = 'DEGREES'
-            elif 'FOV' in prop.enum_items:
-                b_cam.lens_unit = 'FOV'
+        if isinstance(bcam.original, PerspectiveCamera) :
+            b_cam.type = "PERSP"
+            prop = b_cam.bl_rna.properties.get("lens_unit")
+            if "DEGREES" in prop.enum_items :
+                b_cam.lens_unit = "DEGREES"
+            elif "FOV" in prop.enum_items :
+                b_cam.lens_unit = "FOV"
             else:
                 b_cam.lens_unit = prop.default
-            b_cam.angle = math.radians(max(
+            #end if
+            b_cam.angle = math.radians \
+              (
+                max
+                  ( # fixme: these “or”-clauses seem pointless
                     bcam.xfov or bcam.yfov,
-                    bcam.yfov or bcam.xfov))
+                    bcam.yfov or bcam.xfov
+                  )
+              )
         elif isinstance(bcam.original, OrthographicCamera):
-            b_cam.type = 'ORTHO'
-            b_cam.ortho_scale = max(
-                    bcam.xmag or bcam.ymag,
-                    bcam.ymag or bcam.xmag)
+            b_cam.type = "ORTHO"
+            b_cam.ortho_scale = max \
+              ( # fixme: these “or”-clauses seem pointless
+                bcam.xmag or bcam.ymag,
+                bcam.ymag or bcam.xmag
+              )
         #end if
         if bcam.znear:
             b_cam.clip_start = bcam.znear
@@ -105,25 +113,25 @@ class ColladaImport:
         #end if
     #end camera
 
-    def geometry(self, bgeom):
+    def geometry(self, bgeom) :
         b_materials = {}
-        for sym, matnode in bgeom.materialnodebysymbol.items():
+        for sym, matnode in bgeom.materialnodebysymbol.items() :
             mat = matnode.target
             b_matname = self.name(mat)
-            if b_matname not in bpy.data.materials:
+            if b_matname not in bpy.data.materials :
                 b_matname = self.material(mat, b_matname)
             #end if
             b_materials[sym] = bpy.data.materials[b_matname]
         #end for
 
         primitives = bgeom.original.primitives
-        if self._transform('APPLY'):
+        if self._transform("APPLY") :
             primitives = bgeom.primitives()
         #end if
 
         b_geoms = []
-        for i, p in enumerate(primitives):
-            if isinstance(p, BoundPrimitive):
+        for i, p in enumerate(primitives) :
+            if isinstance(p, BoundPrimitive) :
                 b_mat_key = p.original.material
             else:
                 b_mat_key = p.material
@@ -131,12 +139,10 @@ class ColladaImport:
             b_mat = b_materials.get(b_mat_key, None)
             b_meshname = self.name(bgeom.original, i)
 
-            if isinstance(p, (TriangleSet, BoundTriangleSet)):
-                b_mesh = self.geometry_triangleset(
-                        p, b_meshname, b_mat)
-            elif isinstance(p, (Polylist, BoundPolylist)):
-                b_mesh = self.geometry_triangleset(
-                        p.triangleset(), b_meshname, b_mat)
+            if isinstance(p, (TriangleSet, BoundTriangleSet)) :
+                b_mesh = self.geometry_triangleset(p, b_meshname, b_mat)
+            elif isinstance(p, (Polylist, BoundPolylist)) :
+                b_mesh = self.geometry_triangleset(p.triangleset(), b_meshname, b_mat)
             else:
                 continue
             #end if
@@ -149,18 +155,18 @@ class ColladaImport:
             self._ctx.scene.collection.objects.link(b_obj)
             self._ctx.view_layer.objects.active = b_obj
 
-            if len(b_obj.material_slots) == 0:
+            if len(b_obj.material_slots) == 0 :
                 bpy.ops.object.material_slot_add()
             #end if
-            b_obj.material_slots[0].link = 'OBJECT'
+            b_obj.material_slots[0].link = "OBJECT"
             b_obj.material_slots[0].material = b_mat
             b_obj.active_material = b_mat
 
-            if self._transform('APPLY'):
+            if self._transform("APPLY") :
                 # TODO import normals
-                bpy.ops.object.mode_set(mode='EDIT')
+                bpy.ops.object.mode_set(mode = "EDIT")
                 bpy.ops.mesh.normals_make_consistent()
-                bpy.ops.object.mode_set(mode='OBJECT')
+                bpy.ops.object.mode_set(mode = "OBJECT")
             #end if
 
             b_geoms.append(b_obj)
@@ -169,8 +175,8 @@ class ColladaImport:
         return b_geoms
     #end geometry
 
-    def geometry_triangleset(self, triset, b_name, b_mat):
-        if not self._transform('APPLY') and b_name in bpy.data.meshes:
+    def geometry_triangleset(self, triset, b_name, b_mat) :
+        if not self._transform("APPLY") and b_name in bpy.data.meshes :
             # with applied transformation, mesh reuse is not possible
             return bpy.data.meshes[b_name]
         else:
@@ -183,6 +189,7 @@ class ColladaImport:
                 triset.vertex,
                 [],
                 [((v3, v1, v2), (v1, v2, v3))[v3 != 0]
+                  # is this “eekadadoodle” rearrangement really necessary?
                     for f in triset.vertex_index
                     for v1, v2, v3 in (f,)
                 ]
@@ -190,14 +197,14 @@ class ColladaImport:
 
             has_normal = triset.normal_index is not None
             has_uv = len(triset.texcoord_indexset) > 0
-            if has_normal:
+            if has_normal :
                 # TODO import normals
-                for i, f in enumerate(b_mesh.polygons):
+                for i, f in enumerate(b_mesh.polygons) :
                     f.use_smooth = not _is_flat_face(triset.normal[triset.normal_index[i]])
                 #end for
             #end if
-            if has_uv:
-                for j in range(len(triset.texcoord_indexset)):
+            if has_uv :
+                for j in range(len(triset.texcoord_indexset)) :
                     self.texcoord_layer \
                       (
                         triset,
@@ -212,11 +219,11 @@ class ColladaImport:
         #end if
     #end geometry_triangleset
 
-    def texcoord_layer(self, triset, texcoord, index, b_mesh):
+    def texcoord_layer(self, triset, texcoord, index, b_mesh) :
         uv = b_mesh.uv_layers.new()
-        for i, f in enumerate(b_mesh.polygons):
+        for i, f in enumerate(b_mesh.polygons) :
             t1, t2, t3 = index[i]
-            # eekadoodle
+            # eekadoodle -- is this really necessary?
             if triset.vertex_index[i][2] == 0:
                 t1, t2, t3 = t3, t1, t2
             #end if
@@ -227,26 +234,27 @@ class ColladaImport:
         #end for
     #end texcoord_layer
 
-    def light(self, light, i):
+    def light(self, light, i) :
         if isinstance(light.original, AmbientLight):
             return
         b_name = self.name(light.original, i)
-        if b_name not in bpy.data.lamps:
-            if isinstance(light.original, DirectionalLight):
-                b_lamp = bpy.data.lamps.new(b_name, type='SUN')
-            elif isinstance(light.original, PointLight):
-                b_lamp = bpy.data.lamps.new(b_name, type='POINT')
+        if b_name not in bpy.data.lamps :
+            if isinstance(light.original, DirectionalLight) :
+                b_lamp = bpy.data.lamps.new(b_name, type = "SUN")
+            elif isinstance(light.original, PointLight) :
+                b_lamp = bpy.data.lamps.new(b_name, type = "POINT")
                 b_obj = bpy.data.objects.new(b_name, b_lamp)
                 self._ctx.scene.collection.objects.link(b_obj)
                 b_obj.matrix_world = Matrix.Translation(light.position)
             elif isinstance(light.original, SpotLight):
-                b_lamp = bpy.data.lamps.new(b_name, type='SPOT')
+                b_lamp = bpy.data.lamps.new(b_name, type = "SPOT")
             #end if
         #end if
     #end light
 
     class Material :
-        "interpretation of Collada material settings."
+        "interpretation of Collada material settings. Can be subclassed by" \
+        " importer subclasses."
 
         def __init__(self, parent, mat, b_name) :
             self.parent = parent
@@ -274,7 +282,7 @@ class ColladaImport:
             self.tex_coords_src = None
             rendering[effect.shadingtype]()
             b_mat.use_backface_culling = not effect.double_sided
-            transparent_shadows = self.parent._kwargs.get('transparent_shadows', False)
+            transparent_shadows = self.parent._kwargs.get("transparent_shadows", False)
             b_mat.shadow_method = ("OPAQUE", "HASHED")[transparent_shadows]
               # best I can do for non-Cycles
             b_mat.cycles.use_transparent_shadow = transparent_shadows
@@ -287,11 +295,11 @@ class ColladaImport:
             self.rendering_emission()
         #end __init__
 
-        def rendering_constant(self):
+        def rendering_constant(self) :
             self.color_or_texture(self.effect.diffuse, "diffuse", "Emission")
         #end rendering_constant
 
-        def rendering_lambert(self):
+        def rendering_lambert(self) :
             self.rendering_diffuse()
             inputs = self.b_shader.inputs
             inputs["Specular"].default_value = 0
@@ -299,23 +307,23 @@ class ColladaImport:
             inputs["Roughness"].default_value = 1
         #end rendering_lambert
 
-        def rendering_phong(self):
+        def rendering_phong(self) :
             self.rendering_diffuse()
             self.rendering_specular(False)
         #end rendering_phong
 
-        def rendering_blinn(self):
-            # for the difference between Blinn (actually Blinn-Phong) and Phong shaders,
-            # see <https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model>
+        def rendering_blinn(self) :
             self.rendering_diffuse()
             self.rendering_specular(True)
         #end rendering_blinn
 
-        def rendering_diffuse(self):
+        def rendering_diffuse(self) :
             self.color_or_texture(self.effect.diffuse, "diffuse", "Base Color", True)
         #end rendering_diffuse
 
-        def rendering_specular(self, blinn = False):
+        def rendering_specular(self, blinn = False) :
+            # for the difference between Blinn (actually Blinn-Phong) and Phong shaders,
+            # see <https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model>
             effect = self.effect
             b_shader = self.b_shader
             if isinstance(effect.specular, tuple) :
@@ -331,7 +339,7 @@ class ColladaImport:
             #end if
         #end rendering_specular
 
-        def rendering_reflectivity(self):
+        def rendering_reflectivity(self) :
             effect = self.effect
             b_shader = self.b_shader
             if isinstance(effect.reflectivity, Real) and effect.reflectivity > 0 :
@@ -343,7 +351,7 @@ class ColladaImport:
             #end if
         #end rendering_reflectivity
 
-        def rendering_transparency(self):
+        def rendering_transparency(self) :
             effect = self.effect
             if effect.transparency == None :
                 return
@@ -352,7 +360,7 @@ class ColladaImport:
             # RGB_ONE/ZERO opacity modes NYI, treat as A_ONE/ZERO modes for now
             b_mat = self.b_mat
             b_shader = self.b_shader
-            if isinstance(effect.transparency, Real):
+            if isinstance(effect.transparency, Real) :
                 alpha = effect.transparency
                 if flip :
                     alpha = 1 - alpha
@@ -364,7 +372,7 @@ class ColladaImport:
                 #end if
             #end if
             b_shader.inputs["Transmission"].default_value = \
-                (0.0, 1.0)[self.parent._kwargs.get('raytrace_transparency', False)]
+                (0.0, 1.0)[self.parent._kwargs.get("raytrace_transparency", False)]
             if isinstance(effect.index_of_refraction, Real):
                 b_shader.inputs["IOR"].default_value = effect.index_of_refraction
             #end if
@@ -374,9 +382,9 @@ class ColladaImport:
             self.color_or_texture(self.effect.emission, "emission", "Emission")
         #end rendering_emission
 
-        def color_or_texture(self, color_or_texture, tex_name, shader_input_name, set_mat_color = False):
+        def color_or_texture(self, color_or_texture, tex_name, shader_input_name, set_mat_color = False) :
 
-            def try_texture(c_image):
+            def try_texture(c_image) :
                 basename = os.path.split(c_image.path)[1]
                 imgfile_name = os.path.join(self.create_tempdir(), basename)
                 imgfile = open(imgfile_name, "wb")
@@ -431,19 +439,19 @@ class ColladaImport:
             #end try_texture
 
         #begin color_or_texture
-            if isinstance(color_or_texture, Map):
+            if isinstance(color_or_texture, Map) :
                 image = color_or_texture.sampler.surface.image
                 mtex = try_texture(image)
                 if mtex == None :
                     mtex = (1, 0, 1, 1) # same hideous colour Blender uses
                 #end if
-            elif isinstance(color_or_texture, tuple):
+            elif isinstance(color_or_texture, tuple) :
                 mtex = color_or_texture
             else :
                 mtex = None
             #end if
             shader_input = self.b_shader.inputs[shader_input_name]
-            if isinstance(mtex, tuple):
+            if isinstance(mtex, tuple) :
                 shader_input.default_value = mtex
                 if set_mat_color :
                     self.b_mat.diffuse_color[:3] = mtex[:3]
@@ -469,28 +477,30 @@ class ColladaImport:
 
     #end Material
 
-    def material(self, mat, b_name):
+    def material(self, mat, b_name) :
         matctx = type(self).Material(self, mat, b_name)
           # all material setup happens here
         matctx.cleanup_tempdir()
         return matctx.name
     #end material
 
-    def node(self, node, parent):
-        if isinstance(node, (Node, NodeNode)):
+    def node(self, node, parent) :
+        if isinstance(node, (Node, NodeNode)) :
             b_obj = bpy.data.objects.new(self.name(node), None)
             b_obj.matrix_world = Matrix(node.matrix)
             self._ctx.scene.collection.objects.link(b_obj)
-            if parent:
+            if parent != None :
                 b_obj.parent = parent
+            #end if
             parent = b_obj
-        elif isinstance(node, GeometryNode):
-            for bgeom in node.objects('geometry'):
+        elif isinstance(node, GeometryNode) :
+            for bgeom in node.objects("geometry") :
                 b_geoms = self.geometry(bgeom)
                 for b_obj in b_geoms:
                     b_obj.parent = parent
                 #end for
             #end for
+        #end if
         return parent
     #end node
 
@@ -498,35 +508,36 @@ class ColladaImport:
         """ Trying to get efficient and human readable name, workarounds
         Blender's object name limitations.
         """
-        if hasattr(obj, 'id'):
-            uid = obj.id.replace('material', 'm')
+        if hasattr(obj, "id"):
+            uid = obj.id.replace("material", "m")
         else:
             self._namecount += 1
-            uid = 'Untitled.' + str(self._namecount)
-        base = '%s-%d' % (uid, index)
+            uid = "Untitled." + str(self._namecount)
+        base = "%s-%d" % (uid, index)
         if base not in self._names:
             self._namecount += 1
-            self._names[base] = '%s-%.4d' % (base[:MAX_NAME_LENGTH], self._namecount)
+            self._names[base] = "%s-%.4d" % (base[:MAX_NAME_LENGTH], self._namecount)
         return self._names[base]
     #end name
 
     def _transform(self, t):
-        return self._kwargs['transformation'] == t
+        return self._kwargs["transformation"] == t
     #end _transform
 
 #end ColladaImport
 
 class SketchUpImport(ColladaImport):
-    """ SketchUp specific COLLADA import. """
+    "SketchUp specific COLLADA import."
 
     class Material(ColladaImport.Material) :
+        "SketchUp-specific material handling."
 
         def rendering_phong(self):
             super().rendering_lambert()
         #end rendering_phong
 
         def rendering_reflectivity(self):
-            """ There are no reflectivity controls in SketchUp """
+            "There are no reflectivity controls in SketchUp."
             if not self.parent.match_test2(self.effect.xmlnode) :
                 super().rendering_reflectivity()
             #end if
@@ -539,8 +550,8 @@ class SketchUpImport(ColladaImport):
         return \
             any \
               (
-                t.get('profile') == 'GOOGLEEARTH'
-                for t in xml.findall('.//dae:extra/dae:technique', namespaces = DAE_NS)
+                t.get("profile") == "GOOGLEEARTH"
+                for t in xml.findall(".//dae:extra/dae:technique", namespaces = DAE_NS)
               )
     #end match_test2
 
@@ -552,11 +563,11 @@ class SketchUpImport(ColladaImport):
             return \
                 any \
                   (
-                    'SketchUp' in s
+                    "SketchUp" in s
                     for s in
                         (
-                            xml.find('.//dae:instance_visual_scene', namespaces = DAE_NS).get('url'),
-                            xml.find('.//dae:authoring_tool', namespaces = DAE_NS),
+                            xml.find(".//dae:instance_visual_scene", namespaces = DAE_NS).get("url"),
+                            xml.find(".//dae:authoring_tool", namespaces = DAE_NS),
                         )
                     if s != None
                   )
@@ -573,11 +584,14 @@ VENDOR_SPECIFIC.append(SketchUpImport)
 
 def _is_flat_face(normal):
     a = Vector(normal[0])
-    for n in normal[1:]:
+    for n in normal[1:] :
         dp = a.dot(Vector(n))
-        if dp < 0.99999 or dp > 1.00001:
+        if dp < 0.99999 or dp > 1.00001 :
             return False
+        #end if
+    #end for
     return True
+#end _is_flat_face
 
 def _children(node):
     if isinstance(node, Scene):
@@ -588,9 +602,10 @@ def _children(node):
         return node.node.children
     else:
         return []
+    #end if
+#end _children
 
-
-def _dfs(node, cb, parent=None):
+def _dfs(node, cb, parent = None):
     """ Depth first search taking a callback function.
     Its return value will be passed recursively as a parent argument.
 
@@ -600,3 +615,5 @@ def _dfs(node, cb, parent=None):
     parent = cb(node, parent)
     for child in _children(node):
         _dfs(child, cb, parent)
+    #end for
+#end _dfs
