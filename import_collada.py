@@ -39,6 +39,9 @@ def load(op, ctx, filepath = None, **kwargs) :
                 tf_mat = Matrix(obj.matrix)
                 for b_obj in b_geoms :
                     b_obj.matrix_world = tf_mat
+                #end for
+            #end if
+        #end for
     elif tf == "PARENT" :
         _dfs(c.scene, imp.node)
     #end if
@@ -356,7 +359,12 @@ class ColladaImport :
             if effect.transparency == None :
                 return
             opaque_mode = effect.opaque_mode
-            flip = opaque_mode in ("A_ZERO", "RGB_ZERO")
+            flip = \
+              (
+                    (opaque_mode in ("A_ZERO", "RGB_ZERO"))
+                !=
+                    self.parent._kwargs.get("transparency_flip", False)
+              )
             # RGB_ONE/ZERO opacity modes NYI, treat as A_ONE/ZERO modes for now
             b_mat = self.b_mat
             b_shader = self.b_shader
