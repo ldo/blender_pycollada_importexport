@@ -615,11 +615,13 @@ class ColladaImport :
         else :
             self._namecount += 1
             uid = "Untitled." + str(self._namecount)
+        #end if
         base = "%s-%d" % (uid, index)
         if base not in self._names :
             self._namecount += 1
             suffix = "-%.4d" % self._namecount
             self._names[base] = base[:MAX_NAME_LENGTH - len(suffix)] + suffix
+        #end if
         return self._names[base]
     #end name
 
