@@ -278,19 +278,73 @@ class ColladaImport :
     #end texcoord_layer
 
     def light(self, light, i) :
+
+        def direction_matrix(direction) :
+            # calculation follows an answer from
+            # <https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d>
+            reference = Vector((0, 0, -1))
+            direction = Vector(tuple(direction))
+            direction.resize_3d()
+            direction.normalize()
+            cross = reference.cross(direction)
+            fac = Matrix \
+              (
+                [
+                    [0, - cross.z, cross.y, 0],
+                    [cross.z, 0, - cross.x, 0],
+                    [- cross.y, cross.x, 0, 0,],
+                    [0, 0, 0, 1]
+                ]
+              )
+            try :
+                result = \
+                  (
+                        Matrix.Identity(4)
+                    +
+                        fac
+                    +
+                        1 / (1 + reference @ direction) * (fac @ fac)
+                  )
+            except ZeroDivisionError :
+                result = Matrix.Rotation(180 * DEG, 4, "X")
+            #end try
+            return result
+        #end direction_matrix
+
+        def position_direction_matrix(position, direction) :
+            return \
+                Matrix.Translation(position) @ direction_matrix(direction)
+        #end position_direction_matrix
+
+    #begin light
         if isinstance(light.original, AmbientLight) :
             return
         b_name = self.name(light.original, i)
-        if b_name not in bpy.data.lamps :
-            if isinstance(light.original, DirectionalLight) :
-                b_lamp = bpy.data.lamps.new(b_name, type = "SUN")
-            elif isinstance(light.original, PointLight) :
-                b_lamp = bpy.data.lamps.new(b_name, type = "POINT")
+        if b_name not in bpy.data.lights :
+            light_type = tuple \
+              (
+                elt
+                for elt in
+                    (
+                        (DirectionalLight, "SUN", "direction", direction_matrix),
+                        (PointLight, "POINT", "position", Matrix.Translation),
+                          # note Collada common profile doesn’t support
+                          # direction-dependent light intensity
+                        (SpotLight, "SPOT", ("position", "direction"), position_direction_matrix),
+                    )
+                if isinstance(light.original, elt[0])
+              )
+            if len(light_type) != 0 :
+                light_type = light_type[0]
+                b_lamp = bpy.data.lights.new(b_name, type = light_type[1])
                 b_obj = bpy.data.objects.new(b_name, b_lamp)
+                if isinstance(light_type[2], tuple) :
+                    args = tuple(getattr(light, a) for a in light_type[2])
+                else :
+                    args = (getattr(light, light_type[2]),)
+                #end if
+                b_obj.matrix_world = light_type[3](*args)
                 self._ctx.scene.collection.objects.link(b_obj)
-                b_obj.matrix_world = Matrix.Translation(light.position)
-            elif isinstance(light.original, SpotLight) :
-                b_lamp = bpy.data.lamps.new(b_name, type = "SPOT")
             #end if
         #end if
     #end light
