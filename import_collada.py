@@ -658,9 +658,9 @@ class SketchUpImport(ColladaImport) :
                     effect.opaque_mode == "A_ONE"
                       # actually problem SketchUp files leave this unspecified
                 and
-                    effect.transparent != None
+                    isinstance(effect.transparent, tuple)
                 and
-                    effect.transparency != None
+                    isinstance(effect.transparency, Real)
                 and
                     tuple(effect.transparent) == (1, 1, 1, 1)
                 and
