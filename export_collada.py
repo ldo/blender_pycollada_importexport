@@ -29,6 +29,10 @@ class ColladaExport :
         self._geometries = {}
         self._materials = {}
         self._collada = Collada()
+        self._collada.assetInfo.unitmeter = 1
+        self._collada.assetInfo.unitname = "metre"
+        self._collada.assetInfo.upaxis = "Z_UP"
+        self._collada.assetInfo.save()
 
         self._scene = Scene("main", [])
         self._collada.scenes.append(self._scene)
