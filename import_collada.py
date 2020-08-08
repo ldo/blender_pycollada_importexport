@@ -468,12 +468,7 @@ class ColladaImport :
             if effect.transparency == None :
                 return
             opaque_mode = effect.opaque_mode
-            flip = \
-              (
-                    (opaque_mode in ("A_ZERO", "RGB_ZERO"))
-                !=
-                    self.parent._kwargs.get("transparency_flip", False)
-              )
+            flip = opaque_mode in ("A_ZERO", "RGB_ZERO")
             # RGB_ONE/ZERO opacity modes NYI, treat as A_ONE/ZERO modes for now
             b_mat = self.b_mat
             b_shader = self.b_shader
@@ -655,6 +650,26 @@ class SketchUpImport(ColladaImport) :
         def rendering_phong(self) :
             super().rendering_lambert()
         #end rendering_phong
+
+        def rendering_transparency(self) :
+            effect = self.effect
+            # fudge for some disappearing SketchUp models
+            if (
+                    effect.opaque_mode == "A_ONE"
+                      # actually problem SketchUp files leave this unspecified
+                and
+                    effect.transparent != None
+                and
+                    effect.transparency != None
+                and
+                    tuple(effect.transparent) == (1, 1, 1, 1)
+                and
+                    effect.transparency == 0
+            ) :
+                effect.transparency = 1
+            #end if
+            super().rendering_transparency()
+        #end rendering_transparency
 
         def rendering_reflectivity(self) :
             "There are no reflectivity controls in SketchUp."

@@ -89,12 +89,6 @@ class IMPORT_OT_collada(bpy.types.Operator, ImportHelper) :
         name = "Raytrace transparency",
         description = "Raytrace transparent materials",
       )
-    transparency_flip : BoolProperty \
-      (
-        default = False,
-        name = "Transparency Flip",
-        description = "Invert sense of interpretation of transparency values",
-      )
     transformation : EnumProperty \
       (
         name = "Transformations",
