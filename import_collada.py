@@ -81,7 +81,7 @@ class ColladaImport :
         bpy.ops.object.add(type = "CAMERA")
         b_obj = self._ctx.object
         b_obj.name = self.name(bcam.original, id(bcam))
-        b_obj.matrix_world = Matrix(bcam.matrix).transposed()
+        b_obj.matrix_world = Matrix(bcam.matrix)
         b_cam = b_obj.data
         if isinstance(bcam.original, PerspectiveCamera) :
             b_cam.type = "PERSP"
