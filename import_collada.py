@@ -37,7 +37,7 @@ def load(op, ctx, filepath = None, **kwargs) :
         for i, obj in enumerate(c.scene.objects("geometry")) :
             b_geoms = imp.geometry(obj)
             if tf == "MUL" :
-                tf_mat = Matrix(obj.matrix)
+                tf_mat = imp._convert_units_matrix(Matrix(obj.matrix))
                 for b_obj in b_geoms :
                     b_obj.matrix_world = tf_mat
                 #end for
@@ -75,13 +75,27 @@ class ColladaImport :
         self._kwargs = kwargs
         self._namecount = 0
         self._names = {}
+        self._units = collada.assetInfo.unitmeter
+        if self._units == None :
+            self._units = 1
+        #end if
     #end __init__
+
+    def _convert_units_matrix(self, mat) :
+        v_pos, q_rot, v_scale = mat.decompose()
+        return Matrix.Translation(self._units * v_pos) @ q_rot.to_matrix().to_4x4() @ Matrix.Diagonal(v_scale).to_4x4()
+    #end _convert_units_matrix
+
+    def _convert_units_verts(self, verts) :
+        return \
+            list(self._units * Vector(v) for v in verts)
+    #end _convert_units_verts
 
     def camera(self, bcam) :
         bpy.ops.object.add(type = "CAMERA")
         b_obj = self._ctx.object
         b_obj.name = self.name(bcam.original, id(bcam))
-        b_obj.matrix_world = Matrix(bcam.matrix)
+        b_obj.matrix_world = self._convert_units_matrix(Matrix(bcam.matrix))
         b_cam = b_obj.data
         if isinstance(bcam.original, PerspectiveCamera) :
             b_cam.type = "PERSP"
@@ -229,7 +243,7 @@ class ColladaImport :
             b_mesh = bpy.data.meshes.new(b_name)
             b_mesh.from_pydata \
               (
-                triset.vertex,
+                self._convert_units_verts(triset.vertex),
                 [],
                 [((v3, v1, v2), (v1, v2, v3))[v3 != 0]
                   # is this “eekadadoodle” rearrangement really necessary?
@@ -307,13 +321,14 @@ class ColladaImport :
                   )
             except ZeroDivisionError :
                 result = Matrix.Rotation(180 * DEG, 4, "X")
+                  # actually any rotation axis in plane perpendicular to reference will work
             #end try
             return result
         #end direction_matrix
 
         def position_direction_matrix(position, direction) :
             return \
-                Matrix.Translation(position) @ direction_matrix(direction)
+                Matrix.Translation(self._units * position) @ direction_matrix(direction)
         #end position_direction_matrix
 
     #begin light
@@ -589,7 +604,7 @@ class ColladaImport :
     def node(self, node, parent) :
         if isinstance(node, (Node, NodeNode)) :
             b_obj = bpy.data.objects.new(self.name(node), None)
-            b_obj.matrix_world = Matrix(node.matrix)
+            b_obj.matrix_world = self._convert_units_matrix(Matrix(node.matrix))
             self._ctx.scene.collection.objects.link(b_obj)
             if parent != None :
                 b_obj.parent = parent
