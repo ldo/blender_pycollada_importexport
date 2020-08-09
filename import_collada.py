@@ -68,6 +68,18 @@ class ColladaImport :
     #end _convert_units_verts
 
     def camera(self, bcam) :
+
+        def fudge_div(num, den) :
+            # needed to cope with some problem files.
+            try :
+                result = num / den
+            except ZeroDivisionError :
+                result = num
+            #end if
+            return result
+        #end fudge_div
+
+    #begin camera
         b_name = self.name(bcam.original, id(bcam))
         b_cam = bpy.data.cameras.new(b_name)
         b_obj = bpy.data.objects.new(b_cam.name, b_cam)
@@ -82,6 +94,10 @@ class ColladaImport :
             else :
                 b_cam.lens_unit = prop.default
             #end if
+            # I don’t actually support preservation of aspect ratios,
+            # since in Blender that is a rendering setting, not a
+            # camera setting. For now I just use the maximum of the
+            # horizontal and vertical views.
             b_cam.angle = \
                 max \
                   (( # “None” marks cases which shouldn’t occur
@@ -93,7 +109,7 @@ class ColladaImport :
                         None, # bcam.aspect_ratio ≠ None and bcam.yfov = None and bcam.xfov = None
                         lambda :
                             (
-                                2 * math.atan(math.tan(bcam.xfov * DEG / 2) / bcam.aspect_ratio),
+                                2 * math.atan(fudge_div(math.tan(bcam.xfov * DEG / 2),  bcam.aspect_ratio)),
                                 bcam.xfov * DEG
                             ),
                           # bcam.aspect_ratio ≠ None and bcam.yfov = None and bcam.xfov ≠ None
@@ -123,7 +139,7 @@ class ColladaImport :
                         lambda : (bcam.ymag, bcam.xmag),
                           # bcam.aspect_ratio = None and bcam.ymag ≠ None and bcam.xmag ≠ None
                         None, # bcam.aspect_ratio ≠ None and bcam.ymag = None and bcam.xmag = None
-                        lambda : (bcam.xmag / bcam.aspect_ratio, bcam.xmag),
+                        lambda : (fudge_div(bcam.xmag, bcam.aspect_ratio), bcam.xmag),
                           # bcam.aspect_ratio ≠ None and bcam.ymag = None and bcam.xmag ≠ None
                         lambda : (bcam.ymag, bcam.ymag * bcam.aspect_ratio),
                           # bcam.aspect_ratio ≠ None and bcam.ymag ≠ None and bcam.xmag = None
