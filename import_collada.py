@@ -499,21 +499,30 @@ class ColladaImport :
             def try_texture(c_image) :
                 basename = os.path.split(c_image.path)[1]
                 imgfile_name = os.path.join(self.create_tempdir(), basename)
-                imgfile = open(imgfile_name, "wb")
-                imgfile.write(c_image.data)
-                imgfile.close()
-                imgfile = None
-                try :
-                    image = bpy.data.images.load(imgfile_name)
-                except RuntimeError as fail :
+                image = None # to begin with
+                if isinstance(c_image.data, bytes) :
+                    imgfile = open(imgfile_name, "wb")
+                    imgfile.write(c_image.data)
+                    imgfile.close()
+                    imgfile = None
+                    try :
+                        image = bpy.data.images.load(imgfile_name)
+                    except RuntimeError as fail :
+                        sys.stderr.write \
+                          (
+                                "Error trying to load image file %s from %s: %s\n"
+                            %
+                                (repr(c_image.path), repr(imgfile_name), str(fail))
+                          )
+                    #end try
+                else :
                     sys.stderr.write \
                       (
-                            "Error trying to load image file %s from %s: %s\n"
+                            "No data %s for image file %s\n"
                         %
-                            (repr(c_image.path), repr(imgfile_name), str(fail))
+                            (repr(c_image.data), repr(c_image.path))
                       )
-                    image = None
-                #end try
+                #end if
                 if image != None :
                     node_graph = self.b_mat.node_tree
                     image.pack()
