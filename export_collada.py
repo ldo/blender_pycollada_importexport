@@ -143,18 +143,138 @@ class ColladaExport :
     #end obj_light
 
     def obj_mesh(self, b_obj) :
-        geom = self._geometries.get(b_obj.data.name, None)
+
+        b_mesh = b_obj.data
+
+        def make_slotname(slotindex) :
+            return "slot%.3d" % slotindex
+        #end make_slotname
+
+        def encode_mesh() :
+
+            def is_trimesh(faces) :
+                return all([len(f.vertices) == 3 for f in faces])
+            #end is_trimesh
+
+        #begin encode_mesh
+            mesh_name = DATABLOCK.MESH.nameid(b_mesh.name)
+            vert_srcid = mesh_name + "-vertcoords"
+            vert_f = [c for v in b_mesh.vertices for c in v.co]
+            vert_src = FloatSource(vert_srcid, np.array(vert_f), ("X", "Y", "Z"))
+
+            sources = [vert_src]
+
+            norm_v = norm_f = None
+            smooth = [f for f in b_mesh.polygons if f.use_smooth]
+            flat = [f for f in b_mesh.polygons if not f.use_smooth]
+            if any(smooth) :
+                vnorm_srcid = mesh_name + "-vnormals"
+                norm_v = [v.normal for v in b_mesh.vertices]
+                sources.append \
+                  (
+                    FloatSource
+                      (
+                        id = vnorm_srcid,
+                        data = np.array([c for v in norm_v for c in v]),
+                        components = ("X", "Y", "Z")
+                      )
+                  )
+            #end if
+            if any(flat) :
+                fnorm_srcid = mesh_name + "-fnormals"
+                norm_f = [(f.index, f.normal) for f in flat]
+                sources.append \
+                  (
+                    FloatSource
+                      (
+                        id = fnorm_srcid,
+                        data = np.array([c for f in norm_f for c in f[1]]),
+                        components = ("X", "Y", "Z")
+                      )
+                  )
+                norm_f = dict(norm_f)
+            #end if
+
+            name = mesh_name + "-geom"
+            geom = Geometry(self._collada, name, name, sources)
+
+            for slotindex in range(len(b_obj.material_slots)) :
+                slotname = make_slotname(slotindex)
+                smooth = \
+                    [
+                        f
+                        for f in b_mesh.polygons
+                        if f.material_index == slotindex and f.use_smooth
+                    ]
+                flat = \
+                    [
+                        f
+                        for f in b_mesh.polygons
+                        if f.material_index == slotindex and not f.use_smooth
+                    ]
+                if any(smooth) :
+                    ilist = InputList()
+                    ilist.addInput(0, "VERTEX", idurl(vert_srcid))
+                    ilist.addInput(1, "NORMAL", idurl(vnorm_srcid))
+                    # per vertex normals
+                    indices = np.array \
+                      (
+                        [
+                            i
+                            for v in [(v, v) for f in smooth for v in f.vertices]
+                            for i in v
+                        ]
+                      )
+                    if is_trimesh(smooth) :
+                        p = geom.createTriangleSet(indices, ilist, slotname)
+                    else :
+                        vcount = [len(f.vertices) for f in smooth]
+                        p = geom.createPolylist(indices, vcount, ilist, slotname)
+                    #end if
+                    geom.primitives.append(p)
+                #end if
+                if any(flat) :
+                    ilist = InputList()
+                    ilist.addInput(0, "VERTEX", idurl(vert_srcid))
+                    ilist.addInput(1, "NORMAL", idurl(fnorm_srcid))
+                    indices = []
+                    # per face normals
+                    for i, f in enumerate(flat) :
+                        for v in f.vertices :
+                            indices.extend([v, i])
+                        #end for
+                    #end for
+                    indices = np.array(indices)
+                    if is_trimesh(flat) :
+                        p = geom.createTriangleSet(indices, ilist, slotname)
+                    else :
+                        vcount = [len(f.vertices) for f in flat]
+                        p = geom.createPolylist(indices, vcount, ilist, slotname)
+                    #end if
+                    geom.primitives.append(p)
+                #end if
+            #end for
+
+            self._collada.geometries.append(geom)
+            return geom
+        #end encode_mesh
+
+    #begin obj_mesh
+        geom = self._geometries.get(b_mesh.name, None)
         if not geom :
-            geom = self.mesh(b_obj.data)
-            self._geometries[b_obj.data.name] = geom
+            geom = encode_mesh()
+            self._geometries[b_mesh.name] = geom
         #end if
         matnodes = []
-        for slot in b_obj.material_slots :
+        for slotindex, slot in enumerate(b_obj.material_slots) :
             sname = slot.material.name
             if sname not in self._materials :
                 self._materials[sname] = self.material(slot.material)
             #end if
-            matnodes.append(MaterialNode("none", self._materials[sname], inputs = []))
+            matnodes.append \
+              (
+                MaterialNode(make_slotname(slotindex), self._materials[sname], inputs = [])
+              )
         #end for
         return [GeometryNode(geom, matnodes)]
     #end obj_mesh
@@ -196,84 +316,6 @@ class ColladaExport :
             node.children.extend(handle_type[0](self, b_obj))
         #end if
     #end object
-
-    def mesh(self, b_mesh) :
-
-        def is_trimesh(faces) :
-            return all([len(f.vertices) == 3 for f in faces])
-        #end is_trimesh
-
-    #begin mesh
-        mesh_name = DATABLOCK.MESH.nameid(b_mesh.name)
-        vert_srcid = mesh_name + "-vertary"
-        vert_f = [c for v in b_mesh.vertices for c in v.co]
-        vert_src = FloatSource(vert_srcid, np.array(vert_f), ("X", "Y", "Z"))
-
-        sources = [vert_src]
-
-        smooth = list(filter(lambda f : f.use_smooth, b_mesh.polygons))
-        if any(smooth) :
-            vnorm_srcid = mesh_name + "-vnormary"
-            norm_f = [c for v in b_mesh.vertices for c in v.normal]
-            norm_src = FloatSource(vnorm_srcid, np.array(norm_f), ("X", "Y", "Z"))
-            sources.append(norm_src)
-        #end if
-        flat = list(filter(lambda f : not f.use_smooth, b_mesh.polygons))
-        if any(flat) :
-            fnorm_srcid = mesh_name + "-fnormary"
-            norm_f = [c for f in flat for c in f.normal]
-            norm_src = FloatSource(fnorm_srcid, np.array(norm_f), ("X", "Y", "Z"))
-            sources.append(norm_src)
-        #end if
-
-        name = mesh_name + "-geom"
-        geom = Geometry(self._collada, name, name, sources)
-
-        if any(smooth) :
-            ilist = InputList()
-            ilist.addInput(0, "VERTEX", idurl(vert_srcid))
-            ilist.addInput(1, "NORMAL", idurl(vnorm_srcid))
-            # per vertex normals
-            indices = np.array \
-              (
-                [
-                    i
-                    for v in [(v, v) for f in smooth for v in f.vertices]
-                    for i in v
-                ]
-              )
-            if is_trimesh(smooth) :
-                p = geom.createTriangleSet(indices, ilist, "none")
-            else :
-                vcount = [len(f.vertices) for f in smooth]
-                p = geom.createPolylist(indices, vcount, ilist, "none")
-            #end if
-            geom.primitives.append(p)
-        #end if
-        if any(flat) :
-            ilist = InputList()
-            ilist.addInput(0, "VERTEX", idurl(vert_srcid))
-            ilist.addInput(1, "NORMAL", idurl(fnorm_srcid))
-            indices = []
-            # per face normals
-            for i, f in enumerate(flat) :
-                for v in f.vertices :
-                    indices.extend([v, i])
-                #end for
-            #end for
-            indices = np.array(indices)
-            if is_trimesh(flat) :
-                p = geom.createTriangleSet(indices, ilist, "none")
-            else :
-                vcount = [len(f.vertices) for f in flat]
-                p = geom.createPolylist(indices, vcount, ilist, "none")
-            #end if
-            geom.primitives.append(p)
-        #end if
-
-        self._collada.geometries.append(geom)
-        return geom
-    #end mesh
 
     def material(self, b_mat) :
         shader = "lambert"
