@@ -4,20 +4,37 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 from collada import Collada
-from collada.common import tag
+from collada.camera import PerspectiveCamera, OrthographicCamera
 from collada.geometry import Geometry
+from collada.light import DirectionalLight, PointLight, SpotLight
 from collada.material import Effect, Material
 from collada.scene import Node, Scene
-from collada.scene import GeometryNode, MaterialNode
+from collada.scene import CameraNode, GeometryNode, LightNode, MaterialNode
 from collada.scene import MatrixTransform
 from collada.source import FloatSource, InputList
 
+DEG = math.pi / 180
+
 def save(op, context, filepath = None, directory = None, export_as = None, **kwargs) :
-    ex = ColladaExport(directory, export_as)
+    exporter = ColladaExport(directory, export_as)
     for o in context.scene.objects :
-        ex.object(o)
+        exporter.object(o)
     #end for
-    ex.save(filepath)
+    # Note that, in Collada, lights and cameras are not part of
+    # the object-parenting hierarchy, the way they are in Blender.
+    for action, objtype in \
+        (
+            (exporter.obj_camera, "CAMERA"),
+            (exporter.obj_light, "LIGHT"),
+        ) \
+    :
+        for o in context.scene.objects :
+            if o.type == objtype :
+                action(o)
+            #end if
+        #end for
+    #end for
+    exporter.save(filepath)
     return {"FINISHED"}
 #end save
 
@@ -37,6 +54,7 @@ class ColladaExport :
         self._scene = Scene("main", [])
         self._collada.scenes.append(self._scene)
         self._collada.scene = self._scene
+
     #end __init__
 
     def save(self, fp) :
@@ -44,49 +62,106 @@ class ColladaExport :
     #end save
 
     def object(self, b_obj, parent = None, do_children = True) :
-        b_matrix = b_obj.matrix_world
-        if parent != None :
-            if do_children :
-                b_matrix = b_obj.matrix_local
-            else :
-                b_matrix = Matrix()
-            #end if
-        #end if
-
-        node = self.node(b_obj.name, b_matrix)
-        # todo: docs say computing b_obj.children takes O(N) time. Perhaps
-        # build my own parent-child mapping table for all objects in scene
-        # to speed this up?
-        if do_children and any(b_obj.children) :
-            self.object(b_obj, parent = node, do_children = False)
-            for child in b_obj.children :
-                self.object(child, parent = node)
-            #end for
-        #end if
-
-        if parent != None :
-            parent.children.append(node)
-        else :
-            self._scene.nodes.append(node)
-        #end if
-
         inode_meth = self.obj_type_handlers.get(b_obj.type)
         if inode_meth != None :
+            b_matrix = b_obj.matrix_world
+            if parent != None :
+                if do_children :
+                    b_matrix = b_obj.matrix_local
+                else :
+                    b_matrix = Matrix()
+                #end if
+            #end if
+
+            node = self.node(b_obj.name, b_matrix)
+            # todo: docs say computing b_obj.children takes O(N) time. Perhaps
+            # build my own parent-child mapping table for all objects in scene
+            # to speed this up?
+            if do_children and any(b_obj.children) :
+                self.object(b_obj, parent = node, do_children = False)
+                for child in b_obj.children :
+                    self.object(child, parent = node)
+                #end for
+            #end if
+
+            if parent != None :
+                parent.children.append(node)
+            else :
+                self._scene.nodes.append(node)
+            #end if
+
             node.children.extend(inode_meth(self, b_obj))
         #end if
     #end object
 
     def node(self, b_name, b_matrix = None) :
         tf = []
-        if b_matrix :
+        if b_matrix != None :
             tf.append(self.matrix(b_matrix))
         #end if
-        node = Node(b_name, transforms=tf)
+        node = Node(id = b_name, transforms = tf)
         node.save()
         return node
     #end node
 
-    def obj_MESH(self, b_obj) :
+    def obj_camera(self, b_obj) :
+        b_cam = b_obj.data
+        if b_cam.type == "PERSP" :
+            cam_class = PerspectiveCamera
+            args = \
+                {
+                    "xfov" : b_cam.angle_x / DEG,
+                    "yfov" : b_cam.angle_y / DEG,
+                }
+        elif b_cam.type == "ORTHO" :
+            cam_class = OrthographicCamera
+            args = \
+                {
+                    "xmag" : b_cam.ortho_scale,
+                    "ymag" : b_cam.ortho_scale,
+                }
+        else :
+            cam_class = None
+        #end if
+        if cam_class != None :
+            # todo: shared datablock
+            cam = cam_class(id = b_obj.name, znear = b_cam.clip_start, zfar = b_cam.clip_end, **args)
+            camnode = self.node("CA-%s" % b_obj.name, b_matrix = b_obj.matrix_world)
+            camnode.children.append(CameraNode(cam))
+            self._collada.cameras.append(cam)
+            self._scene.nodes.append(camnode)
+        #end if
+    #end obj_camera
+
+    def obj_light(self, b_obj) :
+        b_light = b_obj.data
+        v_pos, q_rot, v_scale = b_obj.matrix_world.decompose()
+        if b_light.type == "POINT" :
+            light_class, use_pos, use_dirn = PointLight, True, False
+        elif b_light.type == "SPOT" :
+            light_class, use_pos, use_dirn = SpotLight, True, True
+        elif b_light.type == "SUN" :
+            light_class, use_pos, use_dirn = DirectionalLight, False, True
+        else :
+            light_class = None
+        #end if
+        if light_class != None :
+            # todo: colour, falloff, shared datablock
+            light = light_class(id = b_obj.name, color = (1, 1, 1, 1))
+            lightnode = self.node("LA-%s" % b_obj.name)
+            lightnode.children.append(LightNode(light))
+            if use_pos :
+                lightnode.transforms.append(self.matrix(Matrix.Translation((v_pos))))
+            #end if
+            if use_dirn :
+                lightnode.transforms.append(self.matrix(q_rot.to_matrix()))
+            #end if
+            self._collada.lights.append(light)
+            self._scene.nodes.append(lightnode)
+        #end if
+    #end obj_light
+
+    def obj_mesh(self, b_obj) :
         geom = self._geometries.get(b_obj.data.name, None)
         if not geom :
             geom = self.mesh(b_obj.data)
@@ -101,11 +176,11 @@ class ColladaExport :
             matnodes.append(MaterialNode("none", self._materials[sname], inputs = []))
         #end for
         return [GeometryNode(geom, matnodes)]
-    #end obj_MESH
+    #end obj_mesh
 
     obj_type_handlers = \
         {
-            "MESH" : obj_MESH,
+            "MESH" : obj_mesh,
         }
 
     def mesh(self, b_mesh) :
@@ -268,10 +343,17 @@ class ColladaExport :
         return mat
     #end material
 
-    def matrix(self, b_matrix) :
-        f = tuple(map(tuple, b_matrix.transposed()))
-        return MatrixTransform(np.array(
-            [e for r in f for e in r], dtype=np.float32))
+    @staticmethod
+    def matrix(b_matrix) :
+        return \
+            MatrixTransform \
+              (
+                np.array
+                  (
+                    [e for r in tuple(map(tuple, b_matrix)) for e in r],
+                    dtype = np.float32
+                  )
+              )
     #end matrix
 
 #end ColladaExport
