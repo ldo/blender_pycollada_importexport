@@ -15,28 +15,9 @@ from collada.source import FloatSource, InputList
 
 DEG = math.pi / 180
 
-def save(op, context, filepath = None, directory = None, export_as = None, **kwargs) :
-    exporter = ColladaExport(directory, export_as)
-    for o in context.scene.objects :
-        exporter.object(o)
-    #end for
-    # Note that, in Collada, lights and cameras are not part of
-    # the object-parenting hierarchy, the way they are in Blender.
-    for action, objtype in \
-        (
-            (exporter.obj_camera, "CAMERA"),
-            (exporter.obj_light, "LIGHT"),
-        ) \
-    :
-        for o in context.scene.objects :
-            if o.type == objtype :
-                action(o)
-            #end if
-        #end for
-    #end for
-    exporter.save(filepath)
-    return {"FINISHED"}
-#end save
+def idurl(uid) :
+    return "#" + uid
+#end idurl
 
 class ColladaExport :
 
@@ -60,39 +41,6 @@ class ColladaExport :
     def save(self, fp) :
         self._collada.write(fp)
     #end save
-
-    def object(self, b_obj, parent = None, do_children = True) :
-        inode_meth = self.obj_type_handlers.get(b_obj.type)
-        if inode_meth != None :
-            b_matrix = b_obj.matrix_world
-            if parent != None :
-                if do_children :
-                    b_matrix = b_obj.matrix_local
-                else :
-                    b_matrix = Matrix()
-                #end if
-            #end if
-
-            node = self.node(b_obj.name, b_matrix)
-            # todo: docs say computing b_obj.children takes O(N) time. Perhaps
-            # build my own parent-child mapping table for all objects in scene
-            # to speed this up?
-            if do_children and any(b_obj.children) :
-                self.object(b_obj, parent = node, do_children = False)
-                for child in b_obj.children :
-                    self.object(child, parent = node)
-                #end for
-            #end if
-
-            if parent != None :
-                parent.children.append(node)
-            else :
-                self._scene.nodes.append(node)
-            #end if
-
-            node.children.extend(inode_meth(self, b_obj))
-        #end if
-    #end object
 
     def node(self, b_name, b_matrix = None) :
         tf = []
@@ -183,7 +131,46 @@ class ColladaExport :
             "MESH" : obj_mesh,
         }
 
+    def object(self, b_obj, parent = None, do_children = True) :
+        inode_meth = self.obj_type_handlers.get(b_obj.type)
+        if inode_meth != None :
+            b_matrix = b_obj.matrix_world
+            if parent != None :
+                if do_children :
+                    b_matrix = b_obj.matrix_local
+                else :
+                    b_matrix = Matrix()
+                #end if
+            #end if
+
+            node = self.node(b_obj.name, b_matrix)
+            # todo: docs say computing b_obj.children takes O(N) time. Perhaps
+            # build my own parent-child mapping table for all objects in scene
+            # to speed this up?
+            if do_children and any(b_obj.children) :
+                self.object(b_obj, parent = node, do_children = False)
+                for child in b_obj.children :
+                    self.object(child, parent = node)
+                #end for
+            #end if
+
+            if parent != None :
+                parent.children.append(node)
+            else :
+                self._scene.nodes.append(node)
+            #end if
+
+            node.children.extend(inode_meth(self, b_obj))
+        #end if
+    #end object
+
     def mesh(self, b_mesh) :
+
+        def is_trimesh(faces) :
+            return all([len(f.vertices) == 3 for f in faces])
+        #end is_trimesh
+
+    #begin mesh
         vert_srcid = b_mesh.name + "-vertary"
         vert_f = [c for v in b_mesh.vertices for c in v.co]
         vert_src = FloatSource(vert_srcid, np.array(vert_f), ("X", "Y", "Z"))
@@ -210,14 +197,14 @@ class ColladaExport :
 
         if any(smooth) :
             ilist = InputList()
-            ilist.addInput(0, "VERTEX", _url(vert_srcid))
-            ilist.addInput(1, "NORMAL", _url(vnorm_srcid))
+            ilist.addInput(0, "VERTEX", idurl(vert_srcid))
+            ilist.addInput(1, "NORMAL", idurl(vnorm_srcid))
             # per vertex normals
             indices = np.array([
                 i for v in [
                     (v, v) for f in smooth for v in f.vertices
                 ] for i in v])
-            if _is_trimesh(smooth) :
+            if is_trimesh(smooth) :
                 p = geom.createTriangleSet(indices, ilist, "none")
             else :
                 vcount = [len(f.vertices) for f in smooth]
@@ -227,8 +214,8 @@ class ColladaExport :
         #end if
         if any(flat) :
             ilist = InputList()
-            ilist.addInput(0, "VERTEX", _url(vert_srcid))
-            ilist.addInput(1, "NORMAL", _url(fnorm_srcid))
+            ilist.addInput(0, "VERTEX", idurl(vert_srcid))
+            ilist.addInput(1, "NORMAL", idurl(fnorm_srcid))
             indices = []
             # per face normals
             for i, f in enumerate(flat) :
@@ -237,7 +224,7 @@ class ColladaExport :
                 #end for
             #end for
             indices = np.array(indices)
-            if _is_trimesh(flat) :
+            if is_trimesh(flat) :
                 p = geom.createTriangleSet(indices, ilist, "none")
             else :
                 vcount = [len(f.vertices) for f in flat]
@@ -358,11 +345,25 @@ class ColladaExport :
 
 #end ColladaExport
 
-def _is_trimesh(faces) :
-    return all([len(f.vertices) == 3 for f in faces])
-#end _is_trimesh
-
-def _url(uid) :
-    return "#" + uid
-#end _url
-
+def save(op, context, filepath = None, directory = None, export_as = None, **kwargs) :
+    exporter = ColladaExport(directory, export_as)
+    for o in context.scene.objects :
+        exporter.object(o)
+    #end for
+    # Note that, in Collada, lights and cameras are not part of
+    # the object-parenting hierarchy, the way they are in Blender.
+    for action, objtype in \
+        (
+            (exporter.obj_camera, "CAMERA"),
+            (exporter.obj_light, "LIGHT"),
+        ) \
+    :
+        for o in context.scene.objects :
+            if o.type == objtype :
+                action(o)
+            #end if
+        #end for
+    #end for
+    exporter.save(filepath)
+    return {"FINISHED"}
+#end save
