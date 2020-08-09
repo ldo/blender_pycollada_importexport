@@ -42,7 +42,8 @@ class ColladaImport :
     "Standard COLLADA importer. Subclasses can implement a “match” method" \
     " to identify vendor-specific features they need to handle."
 
-    def __init__(self, ctx, collada, basedir, **kwargs) :
+    def __init__(self, ctx, collada, filepath, **kwargs) :
+        basename = os.path.basename(filepath)
         self._ctx = ctx
         self._collada = collada
         self._kwargs = kwargs
@@ -52,6 +53,8 @@ class ColladaImport :
         if self._units == None :
             self._units = 1
         #end if
+        self._collection = bpy.data.collections.new(basename)
+        self._ctx.scene.collection.children.link(self._collection)
     #end __init__
 
     def _convert_units_matrix(self, mat) :
@@ -65,11 +68,10 @@ class ColladaImport :
     #end _convert_units_verts
 
     def camera(self, bcam) :
-        bpy.ops.object.add(type = "CAMERA")
-        b_obj = self._ctx.object
-        b_obj.name = self.name(bcam.original, id(bcam))
+        b_name = self.name(bcam.original, id(bcam))
+        b_cam = bpy.data.cameras.new(b_name)
+        b_obj = bpy.data.objects.new(b_cam.name, b_cam)
         b_obj.matrix_world = self._convert_units_matrix(Matrix(bcam.matrix))
-        b_cam = b_obj.data
         if isinstance(bcam.original, PerspectiveCamera) :
             b_cam.type = "PERSP"
             prop = b_cam.bl_rna.properties.get("lens_unit")
@@ -141,6 +143,7 @@ class ColladaImport :
         if bcam.zfar != None :
             b_cam.clip_end = bcam.zfar
         #end if
+        self._collection.objects.link(b_obj)
     #end camera
 
     def geometry(self, bgeom) :
@@ -182,7 +185,7 @@ class ColladaImport :
             b_obj = bpy.data.objects.new(b_meshname, b_mesh)
             b_obj.data = b_mesh
 
-            self._ctx.scene.collection.objects.link(b_obj)
+            self._collection.objects.link(b_obj)
             self._ctx.view_layer.objects.active = b_obj
 
             if len(b_obj.material_slots) == 0 :
@@ -332,7 +335,7 @@ class ColladaImport :
                     args = (getattr(light, light_type[2]),)
                 #end if
                 b_obj.matrix_world = light_type[3](*args)
-                self._ctx.scene.collection.objects.link(b_obj)
+                self._collection.objects.link(b_obj)
             #end if
         #end if
     #end light
@@ -470,7 +473,7 @@ class ColladaImport :
         def color_or_texture(self, color_or_texture, tex_name, shader_input_name, set_mat_color = False) :
 
             def try_texture(c_image) :
-                basename = os.path.split(c_image.path)[1]
+                basename = os.path.basename(c_image.path)
                 imgfile_name = os.path.join(self.create_tempdir(), basename)
                 image = None # to begin with
                 if isinstance(c_image.data, bytes) :
@@ -582,7 +585,7 @@ class ColladaImport :
         if isinstance(node, (Node, NodeNode)) :
             b_obj = bpy.data.objects.new(self.name(node), None)
             b_obj.matrix_world = self._convert_units_matrix(Matrix(node.matrix))
-            self._ctx.scene.collection.objects.link(b_obj)
+            self._collection.objects.link(b_obj)
             if parent != None :
                 b_obj.parent = parent
             #end if
@@ -741,7 +744,7 @@ def load(op, ctx, filepath = None, **kwargs) :
 
 #begin load
     c = Collada(filepath, ignore = [DaeBrokenRefError])
-    importer = get_import(c)(ctx, c, os.path.dirname(filepath), **kwargs)
+    importer = get_import(c)(ctx, c, filepath, **kwargs)
     tf = kwargs["transformation"]
     if tf in ("MUL", "APPLY") :
         for i, obj in enumerate(c.scene.objects("geometry")) :
