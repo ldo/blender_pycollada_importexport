@@ -22,48 +22,21 @@ from collada.triangleset import TriangleSet, BoundTriangleSet
 
 __all__ = ["load"]
 
-VENDOR_SPECIFIC = []
-COLLADA_NS      = "http://www.collada.org/2005/11/COLLADASchema"
-DAE_NS          = {"dae": COLLADA_NS}
+COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
+DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
 DEG = math.pi / 180
 
-def load(op, ctx, filepath = None, **kwargs) :
-    c = Collada(filepath, ignore = [DaeBrokenRefError])
-    impclass = get_import(c)
-    imp = impclass(ctx, c, os.path.dirname(filepath), **kwargs)
-    tf = kwargs["transformation"]
-    if tf in ("MUL", "APPLY") :
-        for i, obj in enumerate(c.scene.objects("geometry")) :
-            b_geoms = imp.geometry(obj)
-            if tf == "MUL" :
-                tf_mat = imp._convert_units_matrix(Matrix(obj.matrix))
-                for b_obj in b_geoms :
-                    b_obj.matrix_world = tf_mat
-                #end for
-            #end if
-        #end for
-    elif tf == "PARENT" :
-        _dfs(c.scene, imp.node)
-    #end if
-    for i, obj in enumerate(c.scene.objects("light")) :
-        imp.light(obj, i)
+def _is_flat_face(normal) :
+    a = Vector(normal[0])
+    for n in normal[1:] :
+        dp = a.dot(Vector(n))
+        if dp < 0.99999 or dp > 1.00001 :
+            return False
+        #end if
     #end for
-    for obj in c.scene.objects("camera") :
-        imp.camera(obj)
-    #end for
-    return {"FINISHED"}
-#end load
-
-def get_import(collada) :
-    "returns a suitable importer for the given Collada object according" \
-    " to any vendor-specific features found."
-    for i in VENDOR_SPECIFIC :
-        if i.match(collada) :
-            return i
-    #end for
-    return ColladaImport
-#end get_import
+    return True
+#end _is_flat_face
 
 class ColladaImport :
     "Standard COLLADA importer. Subclasses can implement a “match” method" \
@@ -724,40 +697,70 @@ class SketchUpImport(ColladaImport) :
 
 #end SketchUpImport
 
-VENDOR_SPECIFIC.append(SketchUpImport)
+VENDOR_SPECIFIC = \
+    [
+        SketchUpImport,
+    ]
 
-def _is_flat_face(normal) :
-    a = Vector(normal[0])
-    for n in normal[1:] :
-        dp = a.dot(Vector(n))
-        if dp < 0.99999 or dp > 1.00001 :
-            return False
+def get_import(collada) :
+    "returns a suitable importer for the given Collada object according" \
+    " to any vendor-specific features found."
+    for i in VENDOR_SPECIFIC :
+        if i.match(collada) :
+            return i
+    #end for
+    return ColladaImport
+#end get_import
+
+def load(op, ctx, filepath = None, **kwargs) :
+
+    def children(node) :
+        if isinstance(node, Scene) :
+            return node.nodes
+        elif isinstance(node, Node) :
+            return node.children
+        elif isinstance(node, NodeNode) :
+            return node.node.children
+        else :
+            return []
         #end if
-    #end for
-    return True
-#end _is_flat_face
+    #end children
 
-def _children(node) :
-    if isinstance(node, Scene) :
-        return node.nodes
-    elif isinstance(node, Node) :
-        return node.children
-    elif isinstance(node, NodeNode) :
-        return node.node.children
-    else :
-        return []
+    def dfs(node, cb, parent = None) :
+        """ Depth first search taking a callback function.
+        Its return value will be passed recursively as a parent argument.
+
+        :param node: COLLADA node
+        :param callable cb:
+         """
+        parent = cb(node, parent)
+        for child in children(node) :
+            dfs(child, cb, parent)
+        #end for
+    #end dfs
+
+#begin load
+    c = Collada(filepath, ignore = [DaeBrokenRefError])
+    importer = get_import(c)(ctx, c, os.path.dirname(filepath), **kwargs)
+    tf = kwargs["transformation"]
+    if tf in ("MUL", "APPLY") :
+        for i, obj in enumerate(c.scene.objects("geometry")) :
+            b_geoms = importer.geometry(obj)
+            if tf == "MUL" :
+                tf_mat = importer._convert_units_matrix(Matrix(obj.matrix))
+                for b_obj in b_geoms :
+                    b_obj.matrix_world = tf_mat
+                #end for
+            #end if
+        #end for
+    elif tf == "PARENT" :
+        dfs(c.scene, importer.node)
     #end if
-#end _children
-
-def _dfs(node, cb, parent = None) :
-    """ Depth first search taking a callback function.
-    Its return value will be passed recursively as a parent argument.
-
-    :param node: COLLADA node
-    :param callable cb:
-     """
-    parent = cb(node, parent)
-    for child in _children(node) :
-        _dfs(child, cb, parent)
+    for i, obj in enumerate(c.scene.objects("light")) :
+        importer.light(obj, i)
     #end for
-#end _dfs
+    for obj in c.scene.objects("camera") :
+        importer.camera(obj)
+    #end for
+    return {"FINISHED"}
+#end load
