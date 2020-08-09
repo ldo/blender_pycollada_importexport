@@ -25,7 +25,7 @@ __all__ = ["load"]
 COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
 DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
-DEG = math.pi / 180
+DEG = math.pi / 180 # angle unit conversion factor
 
 def _is_flat_face(normal) :
     a = Vector(normal[0])

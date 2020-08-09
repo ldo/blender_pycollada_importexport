@@ -13,7 +13,7 @@ from collada.scene import CameraNode, GeometryNode, LightNode, MaterialNode
 from collada.scene import MatrixTransform
 from collada.source import FloatSource, InputList
 
-DEG = math.pi / 180
+DEG = math.pi / 180 # angle unit conversion factor
 
 def idurl(uid) :
     return "#" + uid
@@ -200,10 +200,14 @@ class ColladaExport :
             ilist.addInput(0, "VERTEX", idurl(vert_srcid))
             ilist.addInput(1, "NORMAL", idurl(vnorm_srcid))
             # per vertex normals
-            indices = np.array([
-                i for v in [
-                    (v, v) for f in smooth for v in f.vertices
-                ] for i in v])
+            indices = np.array \
+              (
+                [
+                    i
+                    for v in [(v, v) for f in smooth for v in f.vertices]
+                    for i in v
+                ]
+              )
             if is_trimesh(smooth) :
                 p = geom.createTriangleSet(indices, ilist, "none")
             else :
@@ -266,6 +270,7 @@ class ColladaExport :
                     #end if
                     return value
                 #end get_input
+
                 value = get_input("Base Color")
                 if value != None :
                     effect_kwargs["diffuse"] = value[:3]
