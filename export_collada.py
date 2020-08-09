@@ -154,7 +154,7 @@ class ColladaExport :
                 lightnode.transforms.append(self.matrix(Matrix.Translation((v_pos))))
             #end if
             if use_dirn :
-                lightnode.transforms.append(self.matrix(q_rot.to_matrix()))
+                lightnode.transforms.append(self.matrix(q_rot.to_matrix().to_4x4()))
             #end if
             self._collada.lights.append(light)
             self._scene.nodes.append(lightnode)
