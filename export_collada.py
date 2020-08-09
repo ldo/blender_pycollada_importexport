@@ -1,6 +1,7 @@
 import math
-import bpy
+import enum
 import numpy as np
+import bpy
 from mathutils import Matrix, Vector
 
 from collada import Collada
@@ -14,6 +15,28 @@ from collada.scene import MatrixTransform
 from collada.source import FloatSource, InputList
 
 DEG = math.pi / 180 # angle unit conversion factor
+
+class DATABLOCK(enum.Enum) :
+    # Note on uniqueness of IDs: Blender’s datablock names have to be
+    # unique among datablocks of the same type, so these can be used as
+    # IDs in XML, with a different prefix for each datablock type.
+    CAMERA = "CA"
+    LAMP = "LA"
+    MATERIAL = "MA"
+    MATERIAL_FX = "MA-FX"
+    MESH = "ME"
+
+    def nameid(self, name) :
+        return \
+            "%s-%s" % (self.value, name)
+    #end nameid
+
+    def node_nameid(self, name) :
+        return \
+            "N%s-%s" % (self.value, name)
+    #end node_nameid
+
+#end DATABLOCK
 
 def idurl(uid) :
     return "#" + uid
@@ -73,8 +96,18 @@ class ColladaExport :
         #end if
         if cam_class != None :
             # todo: shared datablock
-            cam = cam_class(id = b_obj.name, znear = b_cam.clip_start, zfar = b_cam.clip_end, **args)
-            camnode = self.node("CA-%s" % b_obj.name, b_matrix = b_obj.matrix_world)
+            cam = cam_class \
+              (
+                id = DATABLOCK.CAMERA.nameid(b_obj.name),
+                znear = b_cam.clip_start,
+                zfar = b_cam.clip_end,
+                **args
+              )
+            camnode = self.node \
+              (
+                DATABLOCK.CAMERA.node_nameid(b_obj.name),
+                b_matrix = b_obj.matrix_world
+              )
             camnode.children.append(CameraNode(cam))
             self._collada.cameras.append(cam)
             self._scene.nodes.append(camnode)
@@ -95,8 +128,8 @@ class ColladaExport :
         #end if
         if light_class != None :
             # todo: colour, falloff, shared datablock
-            light = light_class(id = b_obj.name, color = (1, 1, 1, 1))
-            lightnode = self.node("LA-%s" % b_obj.name)
+            light = light_class(DATABLOCK.LAMP.nameid(b_obj.name), color = (1, 1, 1, 1))
+            lightnode = self.node(DATABLOCK.LAMP.node_nameid(b_obj.name))
             lightnode.children.append(LightNode(light))
             if use_pos :
                 lightnode.transforms.append(self.matrix(Matrix.Translation((v_pos))))
@@ -128,12 +161,12 @@ class ColladaExport :
 
     obj_type_handlers = \
         {
-            "MESH" : obj_mesh,
+            "MESH" : (obj_mesh, DATABLOCK.MESH),
         }
 
     def object(self, b_obj, parent = None, do_children = True) :
-        inode_meth = self.obj_type_handlers.get(b_obj.type)
-        if inode_meth != None :
+        handle_type = self.obj_type_handlers.get(b_obj.type)
+        if handle_type != None :
             b_matrix = b_obj.matrix_world
             if parent != None :
                 if do_children :
@@ -143,7 +176,7 @@ class ColladaExport :
                 #end if
             #end if
 
-            node = self.node(b_obj.name, b_matrix)
+            node = self.node(handle_type[1].node_nameid(b_obj.name), b_matrix)
             # todo: docs say computing b_obj.children takes O(N) time. Perhaps
             # build my own parent-child mapping table for all objects in scene
             # to speed this up?
@@ -160,7 +193,7 @@ class ColladaExport :
                 self._scene.nodes.append(node)
             #end if
 
-            node.children.extend(inode_meth(self, b_obj))
+            node.children.extend(handle_type[0](self, b_obj))
         #end if
     #end object
 
@@ -171,7 +204,8 @@ class ColladaExport :
         #end is_trimesh
 
     #begin mesh
-        vert_srcid = b_mesh.name + "-vertary"
+        mesh_name = DATABLOCK.MESH.nameid(b_mesh.name)
+        vert_srcid = mesh_name + "-vertary"
         vert_f = [c for v in b_mesh.vertices for c in v.co]
         vert_src = FloatSource(vert_srcid, np.array(vert_f), ("X", "Y", "Z"))
 
@@ -179,20 +213,20 @@ class ColladaExport :
 
         smooth = list(filter(lambda f : f.use_smooth, b_mesh.polygons))
         if any(smooth) :
-            vnorm_srcid = b_mesh.name + "-vnormary"
+            vnorm_srcid = mesh_name + "-vnormary"
             norm_f = [c for v in b_mesh.vertices for c in v.normal]
             norm_src = FloatSource(vnorm_srcid, np.array(norm_f), ("X", "Y", "Z"))
             sources.append(norm_src)
         #end if
         flat = list(filter(lambda f : not f.use_smooth, b_mesh.polygons))
         if any(flat) :
-            fnorm_srcid = b_mesh.name + "-fnormary"
+            fnorm_srcid = mesh_name + "-fnormary"
             norm_f = [c for f in flat for c in f.normal]
             norm_src = FloatSource(fnorm_srcid, np.array(norm_f), ("X", "Y", "Z"))
             sources.append(norm_src)
         #end if
 
-        name = b_mesh.name + "-geom"
+        name = mesh_name + "-geom"
         geom = Geometry(self._collada, name, name, sources)
 
         if any(smooth) :
@@ -328,8 +362,8 @@ class ColladaExport :
                 #end if
             #end if
         #end if
-        effect = Effect(b_mat.name + "-fx", [], shader, **effect_kwargs)
-        mat = Material(b_mat.name, b_mat.name, effect)
+        effect = Effect(DATABLOCK.MATERIAL_FX.nameid(b_mat.name), [], shader, **effect_kwargs)
+        mat = Material(DATABLOCK.MATERIAL.nameid(b_mat.name), b_mat.name, effect)
         self._collada.effects.append(effect)
         self._collada.materials.append(mat)
         return mat
