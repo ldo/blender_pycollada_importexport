@@ -56,7 +56,7 @@ class ColladaImport :
             list(self._units * Vector(v) for v in verts)
     #end _convert_units_verts
 
-    def camera(self, bcam) :
+    def camera(self, bcam, i) :
 
         def fudge_div(num, den) :
             # needed to cope with some problem files.
@@ -69,7 +69,7 @@ class ColladaImport :
         #end fudge_div
 
     #begin camera
-        b_name = self.name(bcam.original, id(bcam))
+        b_name = self.name(bcam.original, i)
         # todo: shared datablocks
         b_cam = bpy.data.cameras.new(b_name)
         b_obj = bpy.data.objects.new(b_cam.name, b_cam)
@@ -785,8 +785,8 @@ def load(op, ctx, filepath = None, **kwargs) :
     for i, obj in enumerate(c.scene.objects("light")) :
         importer.light(obj, i)
     #end for
-    for obj in c.scene.objects("camera") :
-        importer.camera(obj)
+    for i, obj in enumerate(c.scene.objects("camera")) :
+        importer.camera(obj, i)
     #end for
     return {"FINISHED"}
 #end load
