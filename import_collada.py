@@ -70,6 +70,7 @@ class ColladaImport :
 
     #begin camera
         b_name = self.name(bcam.original, id(bcam))
+        # todo: shared datablocks
         b_cam = bpy.data.cameras.new(b_name)
         b_obj = bpy.data.objects.new(b_cam.name, b_cam)
         b_obj.matrix_world = self._convert_units_matrix(Matrix(bcam.matrix))
@@ -331,6 +332,7 @@ class ColladaImport :
         if isinstance(light.original, AmbientLight) :
             return
         b_name = self.name(light.original, i)
+        # todo: shared datablocks
         if b_name not in bpy.data.lights :
             light_type = tuple \
               (
