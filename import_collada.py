@@ -27,17 +27,6 @@ DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
 DEG = math.pi / 180 # angle unit conversion factor
 
-def _is_flat_face(normal) :
-    a = Vector(normal[0])
-    for n in normal[1:] :
-        dp = a.dot(Vector(n))
-        if dp < 0.99999 or dp > 1.00001 :
-            return False
-        #end if
-    #end for
-    return True
-#end _is_flat_face
-
 class ColladaImport :
     "Standard COLLADA importer. Subclasses can implement a “match” method" \
     " to identify vendor-specific features they need to handle."
@@ -163,6 +152,65 @@ class ColladaImport :
     #end camera
 
     def geometry(self, bgeom) :
+
+        def geometry_triangleset(triset, b_name, b_mat) :
+
+            def is_flat_face(normal) :
+                a = Vector(normal[0])
+                for n in normal[1:] :
+                    dp = a.dot(Vector(n))
+                    if dp < 0.99999 or dp > 1.00001 :
+                        return False
+                    #end if
+                #end for
+                return True
+            #end is_flat_face
+
+        #begin geometry_triangleset
+            if not self._transform("APPLY") and b_name in bpy.data.meshes :
+                # with applied transformation, mesh reuse is not possible
+                return bpy.data.meshes[b_name]
+            else :
+                if triset.vertex_index is None or not len(triset.vertex_index) :
+                    return
+
+                b_mesh = bpy.data.meshes.new(b_name)
+                b_mesh.from_pydata \
+                  (
+                    self._convert_units_verts(triset.vertex),
+                    [],
+                    [((v3, v1, v2), (v1, v2, v3))[v3 != 0]
+                      # is this “eekadadoodle” rearrangement really necessary?
+                        for f in triset.vertex_index
+                        for v1, v2, v3 in (f,)
+                    ]
+                  )
+
+                has_normal = triset.normal_index is not None
+                has_uv = len(triset.texcoord_indexset) > 0
+                if has_normal :
+                    # TODO import normals
+                    for i, f in enumerate(b_mesh.polygons) :
+                        f.use_smooth = not is_flat_face(triset.normal[triset.normal_index[i]])
+                    #end for
+                #end if
+                if has_uv :
+                    for j in range(len(triset.texcoord_indexset)) :
+                        self.texcoord_layer \
+                          (
+                            triset,
+                            triset.texcoordset[j],
+                            triset.texcoord_indexset[j],
+                            b_mesh
+                          )
+                    #end for
+                #end if
+                b_mesh.update()
+                return b_mesh
+            #end if
+        #end geometry_triangleset
+
+    #begin geometry
         b_materials = {}
         for sym, matnode in bgeom.materialnodebysymbol.items() :
             mat = matnode.target
@@ -189,9 +237,9 @@ class ColladaImport :
             b_meshname = self.name(bgeom.original, i)
 
             if isinstance(p, (TriangleSet, BoundTriangleSet)) :
-                b_mesh = self.geometry_triangleset(p, b_meshname, b_mat)
+                b_mesh = geometry_triangleset(p, b_meshname, b_mat)
             elif isinstance(p, (Polylist, BoundPolylist)) :
-                b_mesh = self.geometry_triangleset(p.triangleset(), b_meshname, b_mat)
+                b_mesh = geometry_triangleset(p.triangleset(), b_meshname, b_mat)
             else :
                 continue
             #end if
@@ -223,50 +271,6 @@ class ColladaImport :
 
         return b_geoms
     #end geometry
-
-    def geometry_triangleset(self, triset, b_name, b_mat) :
-        if not self._transform("APPLY") and b_name in bpy.data.meshes :
-            # with applied transformation, mesh reuse is not possible
-            return bpy.data.meshes[b_name]
-        else :
-            if triset.vertex_index is None or not len(triset.vertex_index) :
-                return
-
-            b_mesh = bpy.data.meshes.new(b_name)
-            b_mesh.from_pydata \
-              (
-                self._convert_units_verts(triset.vertex),
-                [],
-                [((v3, v1, v2), (v1, v2, v3))[v3 != 0]
-                  # is this “eekadadoodle” rearrangement really necessary?
-                    for f in triset.vertex_index
-                    for v1, v2, v3 in (f,)
-                ]
-              )
-
-            has_normal = triset.normal_index is not None
-            has_uv = len(triset.texcoord_indexset) > 0
-            if has_normal :
-                # TODO import normals
-                for i, f in enumerate(b_mesh.polygons) :
-                    f.use_smooth = not _is_flat_face(triset.normal[triset.normal_index[i]])
-                #end for
-            #end if
-            if has_uv :
-                for j in range(len(triset.texcoord_indexset)) :
-                    self.texcoord_layer \
-                      (
-                        triset,
-                        triset.texcoordset[j],
-                        triset.texcoord_indexset[j],
-                        b_mesh
-                      )
-                #end for
-            #end if
-            b_mesh.update()
-            return b_mesh
-        #end if
-    #end geometry_triangleset
 
     def texcoord_layer(self, triset, texcoord, index, b_mesh) :
         uv = b_mesh.uv_layers.new()
