@@ -154,10 +154,10 @@ class ColladaImport :
                 )
         #end if
         if bcam.znear != None :
-            b_cam.clip_start = bcam.znear
+            b_cam.clip_start = self._units * bcam.znear
         #end if
         if bcam.zfar != None :
-            b_cam.clip_end = bcam.zfar
+            b_cam.clip_end = self._units * bcam.zfar
         #end if
         self._collection.objects.link(b_obj)
     #end camera
