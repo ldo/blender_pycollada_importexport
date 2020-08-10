@@ -153,6 +153,21 @@ class ColladaImport :
 
     def geometry(self, bgeom) :
 
+        def texcoord_layer(triset, texcoord, index, b_mesh) :
+            uv = b_mesh.uv_layers.new()
+            for i, f in enumerate(b_mesh.polygons) :
+                t1, t2, t3 = index[i]
+                # eekadoodle -- is this really necessary?
+                if triset.vertex_index[i][2] == 0 :
+                    t1, t2, t3 = t3, t1, t2
+                #end if
+                j = f.loop_start
+                uv.data[j].uv = texcoord[t1]
+                uv.data[j + 1].uv = texcoord[t2]
+                uv.data[j + 2].uv = texcoord[t3]
+            #end for
+        #end texcoord_layer
+
         def geometry_triangleset(triset, b_name, b_mat) :
 
             def is_flat_face(normal) :
@@ -196,7 +211,7 @@ class ColladaImport :
                 #end if
                 if has_uv :
                     for j in range(len(triset.texcoord_indexset)) :
-                        self.texcoord_layer \
+                        texcoord_layer \
                           (
                             triset,
                             triset.texcoordset[j],
@@ -271,21 +286,6 @@ class ColladaImport :
 
         return b_geoms
     #end geometry
-
-    def texcoord_layer(self, triset, texcoord, index, b_mesh) :
-        uv = b_mesh.uv_layers.new()
-        for i, f in enumerate(b_mesh.polygons) :
-            t1, t2, t3 = index[i]
-            # eekadoodle -- is this really necessary?
-            if triset.vertex_index[i][2] == 0 :
-                t1, t2, t3 = t3, t1, t2
-            #end if
-            j = f.loop_start
-            uv.data[j].uv = texcoord[t1]
-            uv.data[j + 1].uv = texcoord[t2]
-            uv.data[j + 2].uv = texcoord[t3]
-        #end for
-    #end texcoord_layer
 
     def light(self, light, i) :
 
