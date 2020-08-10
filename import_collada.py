@@ -343,8 +343,9 @@ class ColladaImport :
               )
             if len(light_type) != 0 :
                 light_type = light_type[0]
-                b_lamp = bpy.data.lights.new(b_name, type = light_type[1])
-                b_obj = bpy.data.objects.new(b_name, b_lamp)
+                b_light = bpy.data.lights.new(b_name, type = light_type[1])
+                b_light.color = light.original.color[:3]
+                b_obj = bpy.data.objects.new(b_name, b_light)
                 if isinstance(light_type[2], tuple) :
                     args = tuple(getattr(light, a) for a in light_type[2])
                 else :
