@@ -127,9 +127,12 @@ class ColladaExport :
             light_class = None
         #end if
         if light_class != None :
-            # todo: colour, falloff, shared datablock
-            light = light_class(DATABLOCK.LAMP.nameid(b_obj.name), color = (1, 1, 1, 1))
-            light.color = tuple(b_light.color) + (1,)
+            # todo: falloff, shared datablock
+            light = light_class \
+              (
+                DATABLOCK.LAMP.nameid(b_obj.name),
+                color = tuple(b_light.color) + (1,)
+              )
             lightnode = self.node(DATABLOCK.LAMP.node_nameid(b_obj.name))
             lightnode.children.append(LightNode(light))
             if use_pos :
