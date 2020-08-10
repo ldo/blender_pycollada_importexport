@@ -159,40 +159,39 @@ class ColladaExport :
         #begin encode_mesh
             mesh_name = DATABLOCK.MESH.nameid(b_mesh.name)
             vert_srcid = mesh_name + "-vertcoords"
-            vert_f = [c for v in b_mesh.vertices for c in v.co]
-            vert_src = FloatSource(vert_srcid, np.array(vert_f), ("X", "Y", "Z"))
+            vert_src = FloatSource \
+              (
+                id = vert_srcid,
+                data = np.array([c for v in b_mesh.vertices for c in v.co]),
+                components = ("X", "Y", "Z")
+              )
 
             sources = [vert_src]
 
-            norm_v = norm_f = None
-            smooth = [f for f in b_mesh.polygons if f.use_smooth]
-            flat = [f for f in b_mesh.polygons if not f.use_smooth]
-            if any(smooth) :
+            if any(f for f in b_mesh.polygons if f.use_smooth) :
                 vnorm_srcid = mesh_name + "-vnormals"
-                norm_v = [v.normal for v in b_mesh.vertices]
                 sources.append \
                   (
                     FloatSource
                       (
                         id = vnorm_srcid,
-                        data = np.array([c for v in norm_v for c in v]),
+                        data = np.array([c for v in b_mesh.vertices for c in v.normal]),
                         components = ("X", "Y", "Z")
                       )
                   )
             #end if
+            flat = [f for f in b_mesh.polygons if not f.use_smooth]
             if any(flat) :
                 fnorm_srcid = mesh_name + "-fnormals"
-                norm_f = [(f.index, f.normal) for f in flat]
                 sources.append \
                   (
                     FloatSource
                       (
                         id = fnorm_srcid,
-                        data = np.array([c for f in norm_f for c in f[1]]),
+                        data = np.array([c for f in flat for c in f.normal]),
                         components = ("X", "Y", "Z")
                       )
                   )
-                norm_f = dict(norm_f)
             #end if
 
             name = mesh_name + "-geom"
