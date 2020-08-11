@@ -42,6 +42,14 @@ class ColladaImport :
         if self._units == None :
             self._units = 1
         #end if
+        orient = collada.assetInfo.upaxis
+        if orient == "Y_UP" :
+            self._orient = Matrix.Rotation(90 * DEG, 4, "X")
+        elif orient == "X_UP" :
+            self._orient = Matrix.Rotation(120 * DEG, 4, Vector(1, -1, 1))
+        else : # "Z_UP" or unspecified
+            self._orient = Matrix.Identity(4)
+        #end if
         self._collection = bpy.data.collections.new(basename)
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
@@ -73,7 +81,7 @@ class ColladaImport :
         # todo: shared datablocks
         b_cam = bpy.data.cameras.new(b_name)
         b_obj = bpy.data.objects.new(b_cam.name, b_cam)
-        b_obj.matrix_world = self._convert_units_matrix(Matrix(bcam.matrix))
+        b_obj.matrix_world = self._orient @ self._convert_units_matrix(Matrix(bcam.matrix))
         if isinstance(bcam.original, PerspectiveCamera) :
             b_cam.type = "PERSP"
             prop = b_cam.bl_rna.properties.get("lens_unit")
@@ -357,7 +365,7 @@ class ColladaImport :
                 else :
                     args = (getattr(light, light_type[2]),)
                 #end if
-                b_obj.matrix_world = light_type[3](*args)
+                b_obj.matrix_world = self._orient @ light_type[3](*args)
                 self._collection.objects.link(b_obj)
             #end if
         #end if
@@ -607,7 +615,7 @@ class ColladaImport :
     def node(self, node, parent) :
         if isinstance(node, (Node, NodeNode)) :
             b_obj = bpy.data.objects.new(self.name(node), None)
-            b_obj.matrix_world = self._convert_units_matrix(Matrix(node.matrix))
+            b_obj.matrix_world = self._orient @ self._convert_units_matrix(Matrix(node.matrix))
             self._collection.objects.link(b_obj)
             if parent != None :
                 b_obj.parent = parent
@@ -773,7 +781,7 @@ def load(op, ctx, filepath = None, **kwargs) :
         for i, obj in enumerate(c.scene.objects("geometry")) :
             b_geoms = importer.geometry(obj)
             if tf == "MUL" :
-                tf_mat = importer._convert_units_matrix(Matrix(obj.matrix))
+                tf_mat = importer._orient @ importer._convert_units_matrix(Matrix(obj.matrix))
                 for b_obj in b_geoms :
                     b_obj.matrix_world = tf_mat
                 #end for
