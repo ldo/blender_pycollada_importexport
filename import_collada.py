@@ -36,7 +36,9 @@ class ColladaImport :
         self._ctx = ctx
         self._collada = collada
         self._kwargs = kwargs
-        self._namecounts = {}
+        self._name_map = {}
+        self._name_revmap = {}
+        self._untitledcount = 0
         self._units = collada.assetInfo.unitmeter
         if self._units == None :
             self._units = 1
@@ -53,22 +55,42 @@ class ColladaImport :
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
 
-    def name(self, obj) :
+    def name(self, obj, extra = None) :
         "Trying to get efficient and human readable name, working around" \
         " Blender’s object name limitations."
-        namecounts = self._namecounts
         if hasattr(obj, "id") :
-            basename = obj.id
+            if extra != None :
+                origname = "%s-%.03d" % (obj.id, extra)
+            else :
+                origname = obj.id
+            #end if
+            if origname in self._name_map :
+                usename = self._name_map[origname]
+            else :
+                usename = origname[:MAX_NAME_LENGTH]
+                seq = 0
+                while usename in self._name_revmap :
+                    seq += 1
+                    suffix = "-%0.3d" % seq
+                    usename ="%s-%s" % (origname[:MAX_NAME_LENGTH - len(suffix)], suffix)
+                #end while
+                self._name_map[origname] = usename
+                self._name_revmap[usename] = origname
+            #end if
         else :
-            basename = "untitled"
+            origname = id(obj) # non-string type to avoid conflicting with any actual XML ID
+            assert extra == None
+            if origname in self._name_map :
+                usename = self._name_map[origname]
+            else :
+                self._untitledcount += 1
+                usename = " untitled.%0.3d" % self._untitledcount
+                  # leading space means it can never conflict with any actual XML ID
+                self._name_map[origname] = usename
+                self._name_revmap[usename] = origname
+            #end if
         #end if
-        basename = basename[:MAX_NAME_LENGTH - 6]
-          # leave enough room for unique suffix digits
-        if basename not in namecounts :
-            namecounts[basename] = 0
-        #end if
-        namecounts[basename] += 1
-        return "%s-%d" % (basename, self._namecounts[basename])
+        return usename
     #end name
 
     def _transform(self, t) :
@@ -279,7 +301,7 @@ class ColladaImport :
                 b_mat_key = p.material
             #end if
             b_mat = b_materials.get(b_mat_key, None)
-            b_meshname = self.name(bgeom.original)
+            b_meshname = self.name(bgeom.original, i)
 
             if isinstance(p, (TriangleSet, BoundTriangleSet)) :
                 b_mesh = geometry_triangleset(p, b_meshname, b_mat)
