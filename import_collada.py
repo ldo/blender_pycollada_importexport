@@ -43,12 +43,12 @@ class ColladaImport :
             self._units = 1
         #end if
         orient = collada.assetInfo.upaxis
-        if orient == "Y_UP" :
-            self._orient = Matrix.Rotation(90 * DEG, 4, "X")
+        if orient == "Z_UP" :
+            self._orient = Matrix.Identity(4)
         elif orient == "X_UP" :
             self._orient = Matrix.Rotation(120 * DEG, 4, Vector(1, -1, 1))
-        else : # "Z_UP" or unspecified
-            self._orient = Matrix.Identity(4)
+        else : # "Y_UP" or unspecified
+            self._orient = Matrix.Rotation(90 * DEG, 4, "X")
         #end if
         self._collection = bpy.data.collections.new(basename)
         self._ctx.scene.collection.children.link(self._collection)
