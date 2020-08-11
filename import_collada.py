@@ -54,6 +54,29 @@ class ColladaImport :
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
 
+    def name(self, obj, index = 0) :
+        """ Trying to get efficient and human readable name, workarounds
+        Blender's object name limitations.
+        """
+        if hasattr(obj, "id") :
+            uid = obj.id.replace("material", "m")
+        else :
+            self._namecount += 1
+            uid = "Untitled." + str(self._namecount)
+        #end if
+        base = "%s-%d" % (uid, index)
+        if base not in self._names :
+            self._namecount += 1
+            suffix = "-%.4d" % self._namecount
+            self._names[base] = base[:MAX_NAME_LENGTH - len(suffix)] + suffix
+        #end if
+        return self._names[base]
+    #end name
+
+    def _transform(self, t) :
+        return self._kwargs["transformation"] == t
+    #end _transform
+
     def _convert_units_matrix(self, mat) :
         v_pos, q_rot, v_scale = mat.decompose()
         return Matrix.Translation(self._units * v_pos) @ q_rot.to_matrix().to_4x4() @ Matrix.Diagonal(v_scale).to_4x4()
@@ -631,29 +654,6 @@ class ColladaImport :
         #end if
         return parent
     #end node
-
-    def name(self, obj, index = 0) :
-        """ Trying to get efficient and human readable name, workarounds
-        Blender's object name limitations.
-        """
-        if hasattr(obj, "id") :
-            uid = obj.id.replace("material", "m")
-        else :
-            self._namecount += 1
-            uid = "Untitled." + str(self._namecount)
-        #end if
-        base = "%s-%d" % (uid, index)
-        if base not in self._names :
-            self._namecount += 1
-            suffix = "-%.4d" % self._namecount
-            self._names[base] = base[:MAX_NAME_LENGTH - len(suffix)] + suffix
-        #end if
-        return self._names[base]
-    #end name
-
-    def _transform(self, t) :
-        return self._kwargs["transformation"] == t
-    #end _transform
 
 #end ColladaImport
 
