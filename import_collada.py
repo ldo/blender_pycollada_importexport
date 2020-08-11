@@ -36,8 +36,7 @@ class ColladaImport :
         self._ctx = ctx
         self._collada = collada
         self._kwargs = kwargs
-        self._namecount = 0
-        self._names = {}
+        self._namecounts = {}
         self._units = collada.assetInfo.unitmeter
         if self._units == None :
             self._units = 1
@@ -54,23 +53,22 @@ class ColladaImport :
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
 
-    def name(self, obj, index = 0) :
-        """ Trying to get efficient and human readable name, workarounds
-        Blender's object name limitations.
-        """
+    def name(self, obj) :
+        "Trying to get efficient and human readable name, working around" \
+        " Blender’s object name limitations."
+        namecounts = self._namecounts
         if hasattr(obj, "id") :
-            uid = obj.id.replace("material", "m")
+            basename = obj.id
         else :
-            self._namecount += 1
-            uid = "Untitled." + str(self._namecount)
+            basename = "untitled"
         #end if
-        base = "%s-%d" % (uid, index)
-        if base not in self._names :
-            self._namecount += 1
-            suffix = "-%.4d" % self._namecount
-            self._names[base] = base[:MAX_NAME_LENGTH - len(suffix)] + suffix
+        basename = basename[:MAX_NAME_LENGTH - 6]
+          # leave enough room for unique suffix digits
+        if basename not in namecounts :
+            namecounts[basename] = 0
         #end if
-        return self._names[base]
+        namecounts[basename] += 1
+        return "%s-%d" % (basename, self._namecounts[basename])
     #end name
 
     def _transform(self, t) :
@@ -87,7 +85,7 @@ class ColladaImport :
             list(self._units * Vector(v) for v in verts)
     #end _convert_units_verts
 
-    def camera(self, bcam, i) :
+    def camera(self, bcam) :
 
         def fudge_div(num, den) :
             # needed to cope with some problem files.
@@ -100,7 +98,7 @@ class ColladaImport :
         #end fudge_div
 
     #begin camera
-        b_name = self.name(bcam.original, i)
+        b_name = self.name(bcam.original)
         # todo: shared datablocks
         b_cam = bpy.data.cameras.new(b_name)
         b_obj = bpy.data.objects.new(b_cam.name, b_cam)
@@ -281,7 +279,7 @@ class ColladaImport :
                 b_mat_key = p.material
             #end if
             b_mat = b_materials.get(b_mat_key, None)
-            b_meshname = self.name(bgeom.original, i)
+            b_meshname = self.name(bgeom.original)
 
             if isinstance(p, (TriangleSet, BoundTriangleSet)) :
                 b_mesh = geometry_triangleset(p, b_meshname, b_mat)
@@ -319,7 +317,7 @@ class ColladaImport :
         return b_geoms
     #end geometry
 
-    def light(self, light, i) :
+    def light(self, light) :
 
         def direction_matrix(direction) :
             # calculation follows an answer from
@@ -362,7 +360,7 @@ class ColladaImport :
     #begin light
         if isinstance(light.original, AmbientLight) :
             return
-        b_name = self.name(light.original, i)
+        b_name = self.name(light.original)
         # todo: shared datablocks
         if b_name not in bpy.data.lights :
             light_type = tuple \
@@ -790,11 +788,11 @@ def load(op, ctx, filepath = None, **kwargs) :
     elif tf == "PARENT" :
         dfs(c.scene, importer.node)
     #end if
-    for i, obj in enumerate(c.scene.objects("light")) :
-        importer.light(obj, i)
+    for obj in c.scene.objects("light") :
+        importer.light(obj)
     #end for
-    for i, obj in enumerate(c.scene.objects("camera")) :
-        importer.camera(obj, i)
+    for obj in c.scene.objects("camera") :
+        importer.camera(obj)
     #end for
     return {"FINISHED"}
 #end load
