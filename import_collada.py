@@ -205,77 +205,29 @@ class ColladaImport :
 
     def geometry(self, bgeom) :
 
-        def texcoord_layer(triset, texcoord, index, b_mesh) :
-            uv = b_mesh.uv_layers.new()
-            for i, f in enumerate(b_mesh.polygons) :
-                t1, t2, t3 = index[i]
-                # eekadoodle -- is this really necessary?
-                if triset.vertex_index[i][2] == 0 :
-                    t1, t2, t3 = t3, t1, t2
-                #end if
-                j = f.loop_start
-                uv.data[j].uv = texcoord[t1]
-                uv.data[j + 1].uv = texcoord[t2]
-                uv.data[j + 2].uv = texcoord[t3]
-            #end for
-        #end texcoord_layer
+        def collect_from_elts(p, attrname) :
+            return list(tuple(getattr(elt, attrname)) for elt in p)
+        #end collect_from_elts
 
-        def geometry_triangleset(triset, b_name, b_mat) :
-
-            def is_flat_face(normal) :
-                a = Vector(normal[0])
-                for n in normal[1:] :
-                    dp = a.dot(Vector(n))
-                    if dp < 0.99999 or dp > 1.00001 :
-                        return False
-                    #end if
-                #end for
-                return True
-            #end is_flat_face
-
-        #begin geometry_triangleset
-            if not self._transform("APPLY") and b_name in bpy.data.meshes :
-                # with applied transformation, mesh reuse is not possible
-                return bpy.data.meshes[b_name]
-            else :
-                if triset.vertex_index is None or not len(triset.vertex_index) :
-                    return
-
-                b_mesh = bpy.data.meshes.new(b_name)
-                b_mesh.from_pydata \
+        def collect_from_elts_layered(p, attrname) :
+            return \
+                list \
                   (
-                    self._convert_units_verts(triset.vertex),
-                    [],
-                    [((v3, v1, v2), (v1, v2, v3))[v3 != 0]
-                      # is this “eekadadoodle” rearrangement really necessary?
-                        for f in triset.vertex_index
-                        for v1, v2, v3 in (f,)
-                    ]
+                    list(layer)
+                    for layer in getattr(p, attrname)
                   )
+        #end collect_from_elts_layered
 
-                has_normal = triset.normal_index is not None
-                has_uv = len(triset.texcoord_indexset) > 0
-                if has_normal :
-                    # TODO import normals
-                    for i, f in enumerate(b_mesh.polygons) :
-                        f.use_smooth = not is_flat_face(triset.normal[triset.normal_index[i]])
-                    #end for
+        def is_flat_face(normal) :
+            a = Vector(normal[0])
+            for n in normal[1:] :
+                dp = a.dot(Vector(n))
+                if dp < 0.99999 or dp > 1.00001 :
+                    return False
                 #end if
-                if has_uv :
-                    for j in range(len(triset.texcoord_indexset)) :
-                        texcoord_layer \
-                          (
-                            triset,
-                            triset.texcoordset[j],
-                            triset.texcoord_indexset[j],
-                            b_mesh
-                          )
-                    #end for
-                #end if
-                b_mesh.update()
-                return b_mesh
-            #end if
-        #end geometry_triangleset
+            #end for
+            return True
+        #end is_flat_face
 
     #begin geometry
         b_materials = {}
@@ -288,55 +240,196 @@ class ColladaImport :
             b_materials[sym] = bpy.data.materials[b_matname]
         #end for
 
-        primitives = bgeom.original.primitives
         if self._transform("APPLY") :
             primitives = bgeom.primitives()
+            b_meshname = self.name(bgeom)
+        else :
+            primitives = bgeom.original.primitives
+            b_meshname = self.name(bgeom.original)
+        #end if
+        if self._transform("APPLY") or b_meshname not in bpy.data.meshes :
+            verts = []
+            faces = []
+            smooth_shade = []
+            got_normals = False
+            material_assignments = []
+            materials = []
+            uvindices = None
+            uvcoords = None
+            got_uvs = False
+            for p in primitives :
+                if isinstance(p, BoundPrimitive) :
+                    b_mat_key = p.original.material
+                else :
+                    b_mat_key = p.material
+                #end if
+                b_mat = b_materials.get(b_mat_key, None)
+                materials.append(b_mat)
+
+                attrinfo = None # for forward refs
+                attrinfo = \
+                    ( # Deal with differences in attribute access
+                      # between polylists and triangle sets
+                        None, # other (NYI for now)
+                        { # [Bound]TriangleSet
+                            "collect_indices" : lambda a : list(getattr(p, attrinfo[a])),
+                            "collect_indices_layered" :
+                                lambda a : list(list(elt) for elt in getattr(p, attrinfo[a])),
+                            "vertindices" : "vertex_index",
+                            "normindices" : "normal_index",
+                            "uvindices" : "texcoord_indexset",
+                        },
+                        { # [Bound]Polylist
+                            "collect_indices" : lambda a : collect_from_elts(p, attrinfo[a]),
+                            "collect_indices_layered" :
+                                lambda a : collect_from_elts_layered(p, attrinfo[a]),
+                            "vertindices" : "indices",
+                            "normindices" : "normal_indices",
+                            "uvindices" : "texcoord_indices",
+                        },
+                    )[
+                            isinstance(p, (TriangleSet, BoundTriangleSet))
+                        |
+                            isinstance(p, (Polylist, BoundPolylist)) << 1
+                    ]
+                if attrinfo != None :
+                    these_faces = p.vertex_index
+                    collect = attrinfo["collect_indices"]
+                    collect_layered = attrinfo["collect_indices_layered"] # TBD not used
+                    if these_faces is not None and len(these_faces) != 0 :
+                        these_verts = list(p.vertex)
+                        these_faces = collect("vertindices")
+                        these_smooth_shade = [False] * len(these_faces)
+                        these_material_assignments = [len(materials) - 1] * len(these_faces)
+                        has_normals = p.normal is not None
+                        if has_normals :
+                            # TODO import normals
+                            these_normcoords = list(p.normal)
+                            these_normindices = collect("normindices")
+                            for i in range(len(these_faces)) :
+                                these_smooth_shade[i] = not is_flat_face \
+                                  (
+                                    list(these_normcoords[j] for j in these_normindices[i])
+                                  )
+                            #end for
+                            got_normals = True
+                        #end if
+                        these_uvindices = p.texcoord_indexset
+                        has_uv = these_uvindices is not None and len(these_uvindices) != 0
+                        if has_uv :
+                            these_uvcoords = list \
+                              (
+                                list(tuple(x) for x in layer)
+                                for layer in p.texcoordset
+                              )
+                            these_uvindices = list \
+                              (
+                                list(layer)
+                                for layer in p.texcoord_indexset
+                              )
+                            if got_uvs :
+                                assert len(these_uvcoords) == len(uvcoords), \
+                                    "mismatch in number of UV layers across geometry components"
+                            else :
+                                # pad out with dummies for prior missing entries.
+                                # Note dummy entries inserted first time are harmless.
+                                uvcoords = ([[(0, 0)]] * len(these_uvcoords))
+                                uvindices = \
+                                  (
+                                        [[
+                                            [0] * len(f)
+                                            for f in (faces + these_faces)
+                                        ]]
+                                    *
+                                        len(these_uvcoords)
+                                  )
+                                got_uvs = True
+                            #end if
+                            for dst, src in \
+                                (
+                                    (uvcoords, these_uvcoords),
+                                    (uvindices, these_uvindices),
+                                ) \
+                            :
+                                for layer, this_layer in zip(dst, src) :
+                                    layer.extend(this_layer)
+                                #end for
+                            #end for
+                        elif got_uvs :
+                            # pad out with dummies for missing entry
+                            for layer in uvcoords :
+                                layer.append((0, 0))
+                            #end for
+                            for layer in uvindices :
+                                layer.extend \
+                                  (
+                                    [
+                                        [0] * len(f)
+                                        for f in these_faces
+                                    ]
+                                  )
+                            #end for
+                        #end if
+                        verts.extend(these_verts)
+                        faces.extend(these_faces)
+                        smooth_shade.extend(these_smooth_shade)
+                        material_assignments.extend(these_material_assignments)
+                    #end if
+                #end if
+            #end for
+
+            b_mesh = bpy.data.meshes.new(b_meshname)
+            b_mesh.from_pydata \
+              (
+                self._convert_units_verts(verts),
+                [],
+                faces
+              )
+            if got_normals :
+                for i, f in enumerate(b_mesh.polygons) :
+                    f.use_smooth = smooth_shade[i]
+                #end for
+            #end if
+            if got_uvs :
+                for coords, indices in zip(uvcoords, uvindices) :
+                    uv = b_mesh.uv_layers.new()
+                    for i, face in enumerate(b_mesh.polygons) :
+                        loop_start = face.loop_start
+                        face_uvs = indices[i]
+                        assert len(face_uvs) == face.loop_total, \
+                            "mismatch between number of face UVs and number of face vertices"
+                        for j in range(face.loop_total) :
+                            uv.data[loop_start + j].uv = coords[face_uvs[j]]
+                        #end for
+                    #end for
+                #end for
+            #end if
+            b_mesh.update()
+        else :
+            b_mesh = bpy.data.meshes[b_meshname]
         #end if
 
-        b_geoms = []
-        for i, p in enumerate(primitives) :
-            if isinstance(p, BoundPrimitive) :
-                b_mat_key = p.original.material
-            else :
-                b_mat_key = p.material
-            #end if
-            b_mat = b_materials.get(b_mat_key, None)
-            b_meshname = self.name(bgeom.original, i)
-
-            if isinstance(p, (TriangleSet, BoundTriangleSet)) :
-                b_mesh = geometry_triangleset(p, b_meshname, b_mat)
-            elif isinstance(p, (Polylist, BoundPolylist)) :
-                b_mesh = geometry_triangleset(p.triangleset(), b_meshname, b_mat)
-            else :
-                continue
-            #end if
-            if not b_mesh :
-                continue
-
-            b_obj = bpy.data.objects.new(b_meshname, b_mesh)
-            b_obj.data = b_mesh
-
-            self._collection.objects.link(b_obj)
-            self._ctx.view_layer.objects.active = b_obj
-
-            if len(b_obj.material_slots) == 0 :
-                bpy.ops.object.material_slot_add()
-            #end if
-            b_obj.material_slots[0].link = "OBJECT"
-            b_obj.material_slots[0].material = b_mat
-            b_obj.active_material = b_mat
-
-            if self._transform("APPLY") :
-                # TODO import normals
-                bpy.ops.object.mode_set(mode = "EDIT")
-                bpy.ops.mesh.normals_make_consistent()
-                bpy.ops.object.mode_set(mode = "OBJECT")
-            #end if
-
-            b_geoms.append(b_obj)
+        b_obj = bpy.data.objects.new(b_meshname, b_mesh)
+        b_obj.data = b_mesh
+        self._collection.objects.link(b_obj)
+        self._ctx.view_layer.objects.active = b_obj
+        for i, m in enumerate(materials) :
+            bpy.ops.object.material_slot_add()
+            b_obj.material_slots[i].link = "OBJECT"
+            b_obj.material_slots[i].material = m
+        #end for
+        for i, face in enumerate(b_mesh.polygons) :
+            face.material_index = material_assignments[i]
         #end for
 
-        return b_geoms
+        if self._transform("APPLY") :
+            # TODO import normals
+            bpy.ops.object.mode_set(mode = "EDIT")
+            bpy.ops.mesh.normals_make_consistent()
+            bpy.ops.object.mode_set(mode = "OBJECT")
+        #end if
+
+        return [b_obj]
     #end geometry
 
     def light(self, light) :
