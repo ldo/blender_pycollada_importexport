@@ -209,15 +209,6 @@ class ColladaImport :
             return list(tuple(getattr(elt, attrname)) for elt in p)
         #end collect_from_elts
 
-        def collect_from_elts_layered(p, attrname) :
-            return \
-                list \
-                  (
-                    list(layer)
-                    for layer in getattr(p, attrname)
-                  )
-        #end collect_from_elts_layered
-
         def is_flat_face(normal) :
             a = Vector(normal[0])
             for n in normal[1:] :
@@ -255,10 +246,7 @@ class ColladaImport :
             smooth_shade = []
             got_normals = False
             material_assignments = []
-            uvindices = None
             uvcoords = None
-            uv_starts = {}
-            got_uvs = False
             for p in primitives :
                 if isinstance(p, BoundPrimitive) :
                     b_mat_key = p.original.material
@@ -275,19 +263,13 @@ class ColladaImport :
                         None, # other (NYI for now)
                         { # [Bound]TriangleSet
                             "collect_indices" : lambda a : list(getattr(p, attrinfo[a])),
-                            "collect_indices_layered" :
-                                lambda a : list(list(elt) for elt in getattr(p, attrinfo[a])),
                             "vertindices" : "vertex_index",
                             "normindices" : "normal_index",
-                            "uvindices" : "texcoord_indexset",
                         },
                         { # [Bound]Polylist
                             "collect_indices" : lambda a : collect_from_elts(p, attrinfo[a]),
-                            "collect_indices_layered" :
-                                lambda a : collect_from_elts_layered(p, attrinfo[a]),
                             "vertindices" : "indices",
                             "normindices" : "normal_indices",
-                            "uvindices" : "texcoord_indices",
                         },
                     )[
                             isinstance(p, (TriangleSet, BoundTriangleSet))
@@ -296,18 +278,18 @@ class ColladaImport :
                     ]
                 if attrinfo != None :
                     these_faces = p.vertex_index
-                    collect = attrinfo["collect_indices"]
-                    collect_layered = attrinfo["collect_indices_layered"] # TBD not used
                     if these_faces is not None and len(these_faces) != 0 :
+                        collect = attrinfo["collect_indices"]
                         print("vertex sources = %s\n" % repr(p.sources["VERTEX"])) # debug
-                        verts_source = p.sources["VERTEX"][0][2]
+                        verts_source_id = p.sources["VERTEX"][0][2]
                           # pycollada code only looks at first source if there is
                           # more than one, so I do too
-                        if verts_source in vert_starts :
-                            vert_start = vert_starts[verts_source]
+                          # (same for normals)
+                        if verts_source_id in vert_starts :
+                            vert_start = vert_starts[verts_source_id]
                         else :
                             vert_start = len(verts)
-                            vert_starts[verts_source] = vert_start
+                            vert_starts[verts_source_id] = vert_start
                             verts.extend(tuple(v) for v in p.vertex)
                         #end if
                         these_faces = collect("vertindices")
@@ -326,46 +308,31 @@ class ColladaImport :
                             #end for
                             got_normals = True
                         #end if
-                        these_uvindices = p.texcoord_indexset
-                        has_uv = these_uvindices is not None and len(these_uvindices) != 0
-                        if has_uv :
-                            print("uv sources = %s\n" % repr(p.sources["TEXCOORD"])) # debug
-                            uv_source = p.sources["TEXCOORD"][0][2]
-                              # pycollada code only looks at first source if there is
-                              # more than one, so I do too
-                            if uv_source in uv_starts :
-                                uv_start = uv_starts[uv_source]
-                            else :
-                                if not got_uvs :
-                                    uvcoords = ([[]] * len(these_uvindices))
-                                    uvindices = ([[]] * len(these_uvindices))
-                                    got_uvs = True
-                                #end if
-                                uv_start = len(uvcoords[0])
-                                uv_starts[uv_source] = uv_start
-                                for layer, this_layer in zip(uvcoords, p.texcoordset) :
-                                    layer.extend \
-                                      (
-                                        list(tuple(v) for v in this_layer)
-                                      )
-                                #end for
-                            #end if
-                            for layer, this_layer in zip(uvindices, p.texcoord_indexset) :
-                                layer.extend(i + uv_start for i in this_layer)
-                            #end for
-                        elif got_uvs :
-                            # pad out with dummies for missing entry
-                            for layer in uvcoords :
-                                layer.append((0, 0))
-                            #end for
-                            for layer in uvindices :
-                                layer.extend \
-                                  (
+                        if "TEXCOORD" in p.sources :
+                            if uvcoords == None :
+                                uvcoords = \
                                     [
-                                        [0] * len(f)
-                                        for f in these_faces
+                                        [[(0, 0)] * len(f) for f in faces]
+                                          # pad out with dummies for any prior missing entries
+                                        for i in range(len(p.sources["TEXCOORD"]))
                                     ]
-                                  )
+                            else :
+                                assert len(uvcoords) == len(p.sources["TEXCOORD"]), \
+                                    "mismatch in number of UV layers between geometry components"
+                            #end if
+                            assert len(p) == len(these_faces), \
+                                "mismatch in number of faces in geometry component"
+                            for face in p :
+                                for layer, coords in zip(uvcoords, face.texcoords) :
+                                    layer.append(list(tuple(v) for v in coords))
+                                #end for
+                            #end for
+                        elif uvcoords != None :
+                            # pad out with dummies for missing entry
+                            for face in p :
+                                for layer in uvcoords :
+                                    layer.append([(0, 0)] * len(face.vertices))
+                                #end for
                             #end for
                         #end if
                         faces.extend(tuple(i + vert_start for i in f) for f in these_faces)
@@ -387,16 +354,16 @@ class ColladaImport :
                     f.use_smooth = smooth_shade[i]
                 #end for
             #end if
-            if got_uvs :
-                for coords, indices in zip(uvcoords, uvindices) :
+            if uvcoords != None :
+                b_mesh_loops = b_mesh.loops
+                for layer in uvcoords :
                     uv = b_mesh.uv_layers.new()
+                    uv_data = uv.data
                     for i, face in enumerate(b_mesh.polygons) :
                         loop_start = face.loop_start
-                        face_uvs = indices[i]
-                        assert len(face_uvs) == face.loop_total, \
-                            "mismatch between number of face UVs and number of face vertices"
+                        coords = layer[i]
                         for j in range(face.loop_total) :
-                            uv.data[loop_start + j].uv = coords[face_uvs[j]]
+                            uv_data[loop_start + j].uv = coords[j]
                         #end for
                     #end for
                 #end for
