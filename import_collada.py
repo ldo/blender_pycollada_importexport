@@ -247,15 +247,17 @@ class ColladaImport :
             primitives = bgeom.original.primitives
             b_meshname = self.name(bgeom.original)
         #end if
+        materials = []
         if self._transform("APPLY") or b_meshname not in bpy.data.meshes :
             verts = []
+            vert_starts = {}
             faces = []
             smooth_shade = []
             got_normals = False
             material_assignments = []
-            materials = []
             uvindices = None
             uvcoords = None
+            uv_starts = {}
             got_uvs = False
             for p in primitives :
                 if isinstance(p, BoundPrimitive) :
@@ -297,7 +299,17 @@ class ColladaImport :
                     collect = attrinfo["collect_indices"]
                     collect_layered = attrinfo["collect_indices_layered"] # TBD not used
                     if these_faces is not None and len(these_faces) != 0 :
-                        these_verts = list(p.vertex)
+                        print("vertex sources = %s\n" % repr(p.sources["VERTEX"])) # debug
+                        verts_source = p.sources["VERTEX"][0][2]
+                          # pycollada code only looks at first source if there is
+                          # more than one, so I do too
+                        if verts_source in vert_starts :
+                            vert_start = vert_starts[verts_source]
+                        else :
+                            vert_start = len(verts)
+                            vert_starts[verts_source] = vert_start
+                            verts.extend(tuple(v) for v in p.vertex)
+                        #end if
                         these_faces = collect("vertindices")
                         these_smooth_shade = [False] * len(these_faces)
                         these_material_assignments = [len(materials) - 1] * len(these_faces)
@@ -317,43 +329,29 @@ class ColladaImport :
                         these_uvindices = p.texcoord_indexset
                         has_uv = these_uvindices is not None and len(these_uvindices) != 0
                         if has_uv :
-                            these_uvcoords = list \
-                              (
-                                list(tuple(x) for x in layer)
-                                for layer in p.texcoordset
-                              )
-                            these_uvindices = list \
-                              (
-                                list(layer)
-                                for layer in p.texcoord_indexset
-                              )
-                            if got_uvs :
-                                assert len(these_uvcoords) == len(uvcoords), \
-                                    "mismatch in number of UV layers across geometry components"
+                            print("uv sources = %s\n" % repr(p.sources["TEXCOORD"])) # debug
+                            uv_source = p.sources["TEXCOORD"][0][2]
+                              # pycollada code only looks at first source if there is
+                              # more than one, so I do too
+                            if uv_source in uv_starts :
+                                uv_start = uv_starts[uv_source]
                             else :
-                                # pad out with dummies for prior missing entries.
-                                # Note dummy entries inserted first time are harmless.
-                                uvcoords = ([[(0, 0)]] * len(these_uvcoords))
-                                uvindices = \
-                                  (
-                                        [[
-                                            [0] * len(f)
-                                            for f in (faces + these_faces)
-                                        ]]
-                                    *
-                                        len(these_uvcoords)
-                                  )
-                                got_uvs = True
-                            #end if
-                            for dst, src in \
-                                (
-                                    (uvcoords, these_uvcoords),
-                                    (uvindices, these_uvindices),
-                                ) \
-                            :
-                                for layer, this_layer in zip(dst, src) :
-                                    layer.extend(this_layer)
+                                if not got_uvs :
+                                    uvcoords = ([[]] * len(these_uvindices))
+                                    uvindices = ([[]] * len(these_uvindices))
+                                    got_uvs = True
+                                #end if
+                                uv_start = len(uvcoords[0])
+                                uv_starts[uv_source] = uv_start
+                                for layer, this_layer in zip(uvcoords, p.texcoordset) :
+                                    layer.extend \
+                                      (
+                                        list(tuple(v) for v in this_layer)
+                                      )
                                 #end for
+                            #end if
+                            for layer, this_layer in zip(uvindices, p.texcoord_indexset) :
+                                layer.extend(i + uv_start for i in this_layer)
                             #end for
                         elif got_uvs :
                             # pad out with dummies for missing entry
@@ -370,8 +368,7 @@ class ColladaImport :
                                   )
                             #end for
                         #end if
-                        verts.extend(these_verts)
-                        faces.extend(these_faces)
+                        faces.extend(tuple(i + vert_start for i in f) for f in these_faces)
                         smooth_shade.extend(these_smooth_shade)
                         material_assignments.extend(these_material_assignments)
                     #end if
@@ -404,9 +401,21 @@ class ColladaImport :
                     #end for
                 #end for
             #end if
+            for i, face in enumerate(b_mesh.polygons) :
+                face.material_index = material_assignments[i]
+            #end for
             b_mesh.update()
         else :
             b_mesh = bpy.data.meshes[b_meshname]
+            for p in primitives :
+                if isinstance(p, BoundPrimitive) :
+                    b_mat_key = p.original.material
+                else :
+                    b_mat_key = p.material
+                #end if
+                b_mat = b_materials.get(b_mat_key, None)
+                materials.append(b_mat)
+            #end for
         #end if
 
         b_obj = bpy.data.objects.new(b_meshname, b_mesh)
@@ -417,9 +426,6 @@ class ColladaImport :
             bpy.ops.object.material_slot_add()
             b_obj.material_slots[i].link = "OBJECT"
             b_obj.material_slots[i].material = m
-        #end for
-        for i, face in enumerate(b_mesh.polygons) :
-            face.material_index = material_assignments[i]
         #end for
 
         if self._transform("APPLY") :
