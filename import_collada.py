@@ -55,15 +55,11 @@ class ColladaImport :
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
 
-    def name(self, obj, extra = None) :
+    def name(self, obj) :
         "Trying to get efficient and human readable name, working around" \
         " Blender’s object name limitations."
         if hasattr(obj, "id") :
-            if extra != None :
-                origname = "%s-%.03d" % (obj.id, extra)
-            else :
-                origname = obj.id
-            #end if
+            origname = obj.id
             if origname in self._name_map :
                 usename = self._name_map[origname]
             else :
@@ -79,7 +75,6 @@ class ColladaImport :
             #end if
         else :
             origname = id(obj) # non-string type to avoid conflicting with any actual XML ID
-            assert extra == None
             if origname in self._name_map :
                 usename = self._name_map[origname]
             else :
