@@ -280,7 +280,6 @@ class ColladaImport :
                     these_faces = p.vertex_index
                     if these_faces is not None and len(these_faces) != 0 :
                         collect = attrinfo["collect_indices"]
-                        print("vertex sources = %s\n" % repr(p.sources["VERTEX"])) # debug
                         verts_source_id = p.sources["VERTEX"][0][2]
                           # pycollada code only looks at first source if there is
                           # more than one, so I do too
