@@ -12,7 +12,7 @@ from mathutils import Matrix, Vector
 
 from collada import Collada
 from collada.camera import PerspectiveCamera, OrthographicCamera
-from collada.common import DaeBrokenRefError
+from collada.common import DaeBrokenRefError, tag
 from collada.light import AmbientLight, DirectionalLight, PointLight, SpotLight
 from collada.material import Map
 from collada.polylist import Polylist, BoundPolylist
@@ -26,6 +26,33 @@ COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
 DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
 DEG = math.pi / 180 # angle unit conversion factor
+
+def blender_technique(obj, b_data, attribs) :
+    # experimental: add Blender-specific attributes via a custom <technique>.
+    # TODO: should be used instead of technique_common, instead of in addition to it.
+    blendstuff = obj.xmlnode.find(tag("technique") + "[@profile=\"BLENDER028\"]")
+    if blendstuff != None :
+        for tagname, parse, attrname in attribs :
+            subtag = blendstuff.find(tag(tagname))
+            if subtag != None :
+                try :
+                    setattr(b_data, attrname, parse(subtag.text))
+                except ValueError as err :
+                    sys.stderr.write \
+                      (
+                            "import_collada: error setting %s attribute for %s: %s\n"
+                        %
+                            (
+                                attrname,
+                                b_data.name,
+                                str(err)
+                            )
+                      )
+                #end try
+            #end if
+        #end for
+    #end if
+#end blender_technique
 
 class ColladaImport :
     "Standard COLLADA importer. Subclasses can implement a “match” method" \
@@ -462,6 +489,15 @@ class ColladaImport :
                 light_type = light_type[0]
                 b_light = bpy.data.lights.new(b_name, type = light_type[1])
                 b_light.color = light.original.color[:3]
+                blender_technique \
+                  (
+                    light.original,
+                    b_light,
+                    [
+                        ("energy", float, "energy"),
+                        # more TBD
+                    ]
+                  )
                 b_obj = bpy.data.objects.new(b_name, b_light)
                 if isinstance(light_type[2], tuple) :
                     args = tuple(getattr(light, a) for a in light_type[2])

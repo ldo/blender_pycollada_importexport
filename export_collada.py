@@ -6,6 +6,7 @@ from mathutils import Matrix, Vector
 
 from collada import Collada
 from collada.camera import PerspectiveCamera, OrthographicCamera
+from collada.common import E
 from collada.geometry import Geometry
 from collada.light import DirectionalLight, PointLight, SpotLight
 from collada.material import Effect, Material
@@ -41,6 +42,16 @@ class DATABLOCK(enum.Enum) :
 def idurl(uid) :
     return "#" + uid
 #end idurl
+
+def blender_technique(obj, b_data, attribs) :
+    # experimental: add Blender-specific attributes via a custom <technique>.
+    blendstuff = E.technique(profile = "BLENDER028")
+    for tagname, format, attrname in attribs :
+        subtag = getattr(E, tagname)(format(getattr(b_data, attrname)))
+        blendstuff.append(subtag)
+    #end for
+    obj.xmlnode.append(blendstuff)
+#end blender_technique
 
 class ColladaExport :
 
@@ -132,6 +143,15 @@ class ColladaExport :
               (
                 DATABLOCK.LAMP.nameid(b_obj.name),
                 color = tuple(b_light.color) + (1,)
+              )
+            blender_technique \
+              (
+                light,
+                b_light,
+                [
+                    ("energy", lambda f : "%.3f" % f, "energy"),
+                    # more TBD
+                ]
               )
             lightnode = self.node(DATABLOCK.LAMP.node_nameid(b_obj.name))
             lightnode.children.append(LightNode(light))
