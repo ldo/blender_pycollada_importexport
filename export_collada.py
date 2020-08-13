@@ -43,14 +43,22 @@ def idurl(uid) :
     return "#" + uid
 #end idurl
 
-def blender_technique(obj, b_data, attribs) :
+def blender_technique(as_extra, obj, b_data, attribs) :
     # experimental: add Blender-specific attributes via a custom <technique>.
     blendstuff = E.technique(profile = "BLENDER028")
     for tagname, format, attrname in attribs :
         subtag = getattr(E, tagname)(format(getattr(b_data, attrname)))
         blendstuff.append(subtag)
     #end for
-    obj.xmlnode.append(blendstuff)
+    if as_extra :
+        parent = E.extra()
+    else :
+        parent = obj.xmlnode
+    #end if
+    parent.append(blendstuff)
+    if as_extra :
+        obj.xmlnode.append(parent)
+    #end if
 #end blender_technique
 
 class ColladaExport :
@@ -146,6 +154,7 @@ class ColladaExport :
               )
             blender_technique \
               (
+                True,
                 light,
                 b_light,
                 [

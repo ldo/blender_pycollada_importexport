@@ -25,10 +25,18 @@ DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
 DEG = math.pi / 180 # angle unit conversion factor
 
-def blender_technique(obj, b_data, attribs) :
+def blender_technique(as_extra, obj, b_data, attribs) :
     # experimental: add Blender-specific attributes via a custom <technique>.
-    # TODO: should be used instead of technique_common, instead of in addition to it.
-    blendstuff = obj.xmlnode.find(tag("technique") + "[@profile=\"BLENDER028\"]")
+    if as_extra :
+        parent = obj.xmlnode.find(tag("extra"))
+    else :
+        parent = obj.xmlnode
+    #end if
+    if parent != None :
+        blendstuff = parent.find(tag("technique") + "[@profile=\"BLENDER028\"]")
+    else :
+        blendstuff = None
+    #end if
     if blendstuff != None :
         for tagname, parse, attrname in attribs :
             subtag = blendstuff.find(tag(tagname))
@@ -489,6 +497,7 @@ class ColladaImport :
                 b_light.color = light.original.color[:3]
                 blender_technique \
                   (
+                    True,
                     light.original,
                     b_light,
                     [
