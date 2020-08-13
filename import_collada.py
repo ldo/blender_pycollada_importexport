@@ -20,8 +20,6 @@ from collada.primitive import BoundPrimitive
 from collada.scene import Scene, Node, NodeNode, GeometryNode
 from collada.triangleset import TriangleSet, BoundTriangleSet
 
-__all__ = ["load"]
-
 COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
 DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
