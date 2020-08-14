@@ -798,9 +798,7 @@ class SketchUpImport(ColladaImport) :
             effect = self.effect
             # get opaque_mode setting direct from XML, avoiding pycollada-provided default
             transparent = effect.xmlnode.find(".//" + tag("transparent"))
-            sys.stderr.write("effect child transparent = %s\n" % str(transparent)) # debug
             if transparent != None :
-                sys.stderr.write(" opaque = %s\n" % repr(transparent.get("opaque"))) # debug
                 opaque_mode = transparent.get("opaque")
             else :
                 opaque_mode = None
