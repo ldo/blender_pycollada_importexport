@@ -25,41 +25,6 @@ DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
 DEG = math.pi / 180 # angle unit conversion factor
 
-def blender_technique(as_extra, obj, b_data, attribs) :
-    # experimental: add Blender-specific attributes via a custom <technique>.
-    if as_extra :
-        parent = obj.xmlnode.find(tag("extra"))
-    else :
-        parent = obj.xmlnode
-    #end if
-    if parent != None :
-        blendstuff = parent.find(tag("technique") + "[@profile=\"BLENDER028\"]")
-    else :
-        blendstuff = None
-    #end if
-    if blendstuff != None :
-        for tagname, parse, attrname in attribs :
-            subtag = blendstuff.find(tag(tagname))
-            if subtag != None :
-                try :
-                    setattr(b_data, attrname, parse(subtag.text))
-                except ValueError as err :
-                    sys.stderr.write \
-                      (
-                            "import_collada: error setting %s attribute for %s: %s\n"
-                        %
-                            (
-                                attrname,
-                                b_data.name,
-                                str(err)
-                            )
-                      )
-                #end try
-            #end if
-        #end for
-    #end if
-#end blender_technique
-
 class ColladaImport :
     "Standard COLLADA importer. Subclasses can implement a “match” method" \
     " to identify vendor-specific features they need to handle."
@@ -68,6 +33,7 @@ class ColladaImport :
         basename = os.path.basename(filepath)
         self._ctx = ctx
         self._collada = collada
+        self._recognize_blender_extensions = kwargs["recognize_blender_extensions"]
         self._transformation = kwargs["transformation"]
         self._name_map = {}
         self._name_revmap = {}
@@ -87,6 +53,43 @@ class ColladaImport :
         self._collection = bpy.data.collections.new(basename)
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
+
+    def blender_technique(self, as_extra, obj, b_data, attribs) :
+        blendstuff = None
+        if self._recognize_blender_extensions :
+            # experimental: add Blender-specific attributes via a custom <technique>.
+            if as_extra :
+                parent = obj.xmlnode.find(tag("extra"))
+            else :
+                parent = obj.xmlnode
+            #end if
+            if parent != None :
+                blendstuff = parent.find(tag("technique") + "[@profile=\"BLENDER028\"]")
+            #end if
+            if blendstuff != None :
+                for tagname, parse, attrname in attribs :
+                    subtag = blendstuff.find(tag(tagname))
+                    if subtag != None :
+                        try :
+                            setattr(b_data, attrname, parse(subtag.text))
+                        except ValueError as err :
+                            sys.stderr.write \
+                              (
+                                    "import_collada: error setting %s attribute for %s: %s\n"
+                                %
+                                    (
+                                        attrname,
+                                        b_data.name,
+                                        str(err)
+                                    )
+                              )
+                        #end try
+                    #end if
+                #end for
+            #end if
+        #end if
+        return blendstuff != None
+    #end blender_technique
 
     def name(self, obj) :
         "Trying to get efficient and human readable name, working around" \
@@ -481,7 +484,7 @@ class ColladaImport :
                 light_type = light_type[0]
                 b_light = bpy.data.lights.new(b_name, type = light_type[1])
                 b_light.color = light.original.color[:3]
-                blender_technique \
+                self.blender_technique \
                   (
                     True,
                     light.original,

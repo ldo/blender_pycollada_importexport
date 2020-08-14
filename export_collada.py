@@ -43,27 +43,10 @@ def idurl(uid) :
     return "#" + uid
 #end idurl
 
-def blender_technique(as_extra, obj, b_data, attribs) :
-    # experimental: add Blender-specific attributes via a custom <technique>.
-    blendstuff = E.technique(profile = "BLENDER028")
-    for tagname, format, attrname in attribs :
-        subtag = getattr(E, tagname)(format(getattr(b_data, attrname)))
-        blendstuff.append(subtag)
-    #end for
-    if as_extra :
-        parent = E.extra()
-    else :
-        parent = obj.xmlnode
-    #end if
-    parent.append(blendstuff)
-    if as_extra :
-        obj.xmlnode.append(parent)
-    #end if
-#end blender_technique
-
 class ColladaExport :
 
     def __init__(self, directory, kwargs) :
+        self._add_blender_extensions = kwargs["add_blender_extensions"]
         self._dir = directory
         self._up_axis = kwargs["up_axis"]
         if self._up_axis == "Z_UP" :
@@ -92,6 +75,26 @@ class ColladaExport :
     def save(self, fp) :
         self._collada.write(fp)
     #end save
+
+    def blender_technique(self, as_extra, obj, b_data, attribs) :
+        # experimental: add Blender-specific attributes via a custom <technique>.
+        if self._add_blender_extensions :
+            blendstuff = E.technique(profile = "BLENDER028")
+            for tagname, format, attrname in attribs :
+                subtag = getattr(E, tagname)(format(getattr(b_data, attrname)))
+                blendstuff.append(subtag)
+            #end for
+            if as_extra :
+                parent = E.extra()
+            else :
+                parent = obj.xmlnode
+            #end if
+            parent.append(blendstuff)
+            if as_extra :
+                obj.xmlnode.append(parent)
+            #end if
+        #end if
+    #end blender_technique
 
     def node(self, b_name, b_matrix = None) :
         tf = []
@@ -161,7 +164,7 @@ class ColladaExport :
                 DATABLOCK.LAMP.nameid(b_obj.name),
                 color = tuple(b_light.color) + (1,)
               )
-            blender_technique \
+            self.blender_technique \
               (
                 True,
                 light,

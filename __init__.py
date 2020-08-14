@@ -77,6 +77,12 @@ class IMPORT_OT_collada(bpy.types.Operator, ImportHelper) :
         subtype = "DIR_PATH",
       )
 
+    recognize_blender_extensions : BoolProperty \
+      (
+        name = "Recognize Blender Extensions",
+        description = "Recognize extra info specific to Blender",
+        default = True,
+      )
     transformation : EnumProperty \
       (
         name = "Transformations",
@@ -129,6 +135,12 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
         subtype = "DIR_PATH",
       )
 
+    add_blender_extensions : BoolProperty \
+      (
+        name = "Add Blender Extensions",
+        description = "Include extra info specific to Blender",
+        default = True,
+      )
     export_as : EnumProperty \
       ( # todo: not actually implemented in export_collada.py!
         name= "Export as",
