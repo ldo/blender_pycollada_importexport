@@ -533,10 +533,6 @@ class ColladaImport :
             self.tex_coords_src = None
             rendering[effect.shadingtype]()
             b_mat.use_backface_culling = not effect.double_sided
-            transparent_shadows = self.parent._kwargs.get("transparent_shadows", False)
-            b_mat.shadow_method = ("OPAQUE", "HASHED")[transparent_shadows]
-              # best I can do for non-Cycles
-            b_mat.cycles.use_transparent_shadow = transparent_shadows
             if isinstance(effect.emission, tuple) :
                 b_shader.inputs["Emission"].default_value = effect.emission
             # Map option NYI for now
@@ -622,8 +618,6 @@ class ColladaImport :
                     b_mat.diffuse_color[3] = alpha
                 #end if
             #end if
-            b_shader.inputs["Transmission"].default_value = \
-                (0.0, 1.0)[self.parent._kwargs.get("raytrace_transparency", False)]
             if isinstance(effect.index_of_refraction, Real) :
                 b_shader.inputs["IOR"].default_value = effect.index_of_refraction
             #end if

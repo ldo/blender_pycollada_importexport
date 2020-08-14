@@ -77,18 +77,6 @@ class IMPORT_OT_collada(bpy.types.Operator, ImportHelper) :
         subtype = "DIR_PATH",
       )
 
-    transparent_shadows : BoolProperty \
-      (
-        default = False,
-        name = "Transparent shadows",
-        description = "Import all materials receiving transparent shadows",
-      )
-    raytrace_transparency : BoolProperty \
-      (
-        default = False,
-        name = "Raytrace transparency",
-        description = "Raytrace transparent materials",
-      )
     transformation : EnumProperty \
       (
         name = "Transformations",
