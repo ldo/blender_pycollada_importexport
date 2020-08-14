@@ -335,7 +335,7 @@ class ColladaImport :
                             #end for
                             got_normals = True
                         #end if
-                        if "TEXCOORD" in p.sources :
+                        if "TEXCOORD" in p.sources and len(p.sources["TEXCOORD"]) != 0 :
                             if uvcoords == None :
                                 uvcoords = \
                                     [
@@ -345,7 +345,11 @@ class ColladaImport :
                                     ]
                             else :
                                 assert len(uvcoords) == len(p.sources["TEXCOORD"]), \
-                                    "mismatch in number of UV layers between geometry components"
+                                  (
+                                        "mismatch in number of UV layers between geometry components: %d vs %d"
+                                    %
+                                        (len(uvcoords), len(p.sources["TEXCOORD"]))
+                                  )
                             #end if
                             assert len(p) == len(these_faces), \
                                 "mismatch in number of faces in geometry component"
