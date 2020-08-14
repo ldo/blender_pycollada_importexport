@@ -63,15 +63,24 @@ def blender_technique(as_extra, obj, b_data, attribs) :
 
 class ColladaExport :
 
-    def __init__(self, directory, export_as = "dae_only") :
+    def __init__(self, directory, kwargs) :
         self._dir = directory
-        self._export_as = export_as # TODO: NYI
+        self._up_axis = kwargs["up_axis"]
+        if self._up_axis == "Z_UP" :
+            self._orient = Matrix.Identity(4)
+        elif self._up_axis == "X_UP" :
+            self._orient = Matrix.Rotation(- 120 * DEG, 4, Vector(1, -1, 1))
+        else : # "Y_UP" or unspecified
+            self._orient = Matrix.Rotation(- 90 * DEG, 4, "X")
+        #end if
+        self._export_as = kwargs["export_as"] # TODO: NYI
+        self._selected_only = kwargs["use_selection"]
         self._geometries = {}
         self._materials = {}
         self._collada = Collada()
         self._collada.assetInfo.unitmeter = 1
         self._collada.assetInfo.unitname = "metre"
-        self._collada.assetInfo.upaxis = "Z_UP"
+        self._collada.assetInfo.upaxis = self._up_axis
         self._collada.assetInfo.save()
 
         self._scene = Scene("main", [])
@@ -125,7 +134,7 @@ class ColladaExport :
             camnode = self.node \
               (
                 DATABLOCK.CAMERA.node_nameid(b_obj.name),
-                b_matrix = b_obj.matrix_world
+                b_matrix = self._orient @ b_obj.matrix_world
               )
             camnode.children.append(CameraNode(cam))
             self._collada.cameras.append(cam)
@@ -135,7 +144,7 @@ class ColladaExport :
 
     def obj_light(self, b_obj) :
         b_light = b_obj.data
-        v_pos, q_rot, v_scale = b_obj.matrix_world.decompose()
+        v_pos, q_rot, v_scale = (self._orient @ b_obj.matrix_world).decompose()
         if b_light.type == "POINT" :
             light_class, use_pos, use_dirn = PointLight, True, False
         elif b_light.type == "SPOT" :
@@ -319,7 +328,7 @@ class ColladaExport :
     def object(self, b_obj, parent = None, do_children = True) :
         handle_type = self.obj_type_handlers.get(b_obj.type)
         if handle_type != None :
-            b_matrix = b_obj.matrix_world
+            b_matrix = self._orient @ b_obj.matrix_world
             if parent != None :
                 if do_children :
                     b_matrix = b_obj.matrix_local
@@ -458,10 +467,12 @@ class ColladaExport :
 
 #end ColladaExport
 
-def save(op, context, filepath = None, directory = None, export_as = None, **kwargs) :
-    exporter = ColladaExport(directory, export_as)
+def save(op, context, filepath = None, directory = None, **kwargs) :
+    exporter = ColladaExport(directory, kwargs)
     for o in context.scene.objects :
-        exporter.object(o)
+        if not exporter._selected_only or o.select_get() :
+            exporter.object(o)
+        #end if
     #end for
     # Note that, in Collada, lights and cameras are not part of
     # the object-parenting hierarchy, the way they are in Blender.
@@ -472,7 +483,7 @@ def save(op, context, filepath = None, directory = None, export_as = None, **kwa
         ) \
     :
         for o in context.scene.objects :
-            if o.type == objtype :
+            if o.type == objtype and (not exporter._selected_only or o.select_get()) :
                 action(o)
             #end if
         #end for

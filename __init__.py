@@ -141,9 +141,8 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
         subtype = "DIR_PATH",
       )
 
-    # TODO: none of these optins are actually implemented in export_collada.py!
     export_as : EnumProperty \
-      (
+      ( # todo: not actually implemented in export_collada.py!
         name= "Export as",
         items =
             (
@@ -153,19 +152,16 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
             ),
         default = "dae_only",
       )
-    axis_up : EnumProperty \
+    up_axis : EnumProperty \
       (
         name = "Up",
         items =
             (
-                ("X", "X Up", ""),
-                ("Y", "Y Up", ""),
-                ("Z", "Z Up", ""),
-                ("-X", "-X Up", ""),
-                ("-Y", "-Y Up", ""),
-                ("-Z", "-Z Up", ""),
+                ("X_UP", "X Up", ""),
+                ("Y_UP", "Y Up", ""),
+                ("Z_UP", "Z Up", ""),
             ),
-        default = "Z",
+        default = "Z_UP",
       )
     use_selection : BoolProperty \
       (
