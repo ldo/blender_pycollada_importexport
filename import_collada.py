@@ -796,10 +796,18 @@ class SketchUpImport(ColladaImport) :
 
         def rendering_transparency(self) :
             effect = self.effect
+            # get opaque_mode setting direct from XML, avoiding pycollada-provided default
+            transparent = effect.xmlnode.find(".//" + tag("transparent"))
+            sys.stderr.write("effect child transparent = %s\n" % str(transparent)) # debug
+            if transparent != None :
+                sys.stderr.write(" opaque = %s\n" % repr(transparent.get("opaque"))) # debug
+                opaque_mode = transparent.get("opaque")
+            else :
+                opaque_mode = None
+            #end if
             # fudge for some disappearing SketchUp models
             if (
-                    effect.opaque_mode == "A_ONE"
-                      # actually problem SketchUp files leave this unspecified
+                    opaque_mode == None
                 and
                     isinstance(effect.transparent, tuple)
                 and
