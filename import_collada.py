@@ -68,7 +68,7 @@ class ColladaImport :
         basename = os.path.basename(filepath)
         self._ctx = ctx
         self._collada = collada
-        self._kwargs = kwargs
+        self._transformation = kwargs["transformation"]
         self._name_map = {}
         self._name_revmap = {}
         self._untitledcount = 0
@@ -122,7 +122,7 @@ class ColladaImport :
     #end name
 
     def _transform(self, t) :
-        return self._kwargs["transformation"] == t
+        return self._transformation == t
     #end _transform
 
     def _convert_units_matrix(self, mat) :
@@ -893,7 +893,7 @@ def load(op, ctx, filepath = None, **kwargs) :
 #begin load
     c = Collada(filepath, ignore = [DaeBrokenRefError])
     importer = get_import(c)(ctx, c, filepath, **kwargs)
-    tf = kwargs["transformation"]
+    tf = importer._transformation
     if tf in ("MUL", "APPLY") :
         for i, obj in enumerate(c.scene.objects("geometry")) :
             b_geoms = importer.geometry(obj)
