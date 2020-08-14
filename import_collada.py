@@ -284,30 +284,10 @@ class ColladaImport :
                 b_mat = b_materials.get(b_mat_key, None)
                 materials.append(b_mat)
 
-                attrinfo = None # for forward refs
-                attrinfo = \
-                    ( # Deal with differences in attribute access
-                      # between polylists and triangle sets
-                        None, # other (NYI for now)
-                        { # [Bound]TriangleSet
-                            "collect_indices" : lambda a : list(getattr(p, attrinfo[a])),
-                            "vertindices" : "vertex_index",
-                            "normindices" : "normal_index",
-                        },
-                        { # [Bound]Polylist
-                            "collect_indices" : lambda a : collect_from_elts(p, attrinfo[a]),
-                            "vertindices" : "indices",
-                            "normindices" : "normal_indices",
-                        },
-                    )[
-                            isinstance(p, (TriangleSet, BoundTriangleSet))
-                        |
-                            isinstance(p, (Polylist, BoundPolylist)) << 1
-                    ]
-                if attrinfo != None :
+                if isinstance(p, (TriangleSet, BoundTriangleSet, Polylist, BoundPolylist)) :
                     these_faces = p.vertex_index
                     if these_faces is not None and len(these_faces) != 0 :
-                        collect = attrinfo["collect_indices"]
+                        collect = lambda a : collect_from_elts(p, a)
                         verts_source_id = p.sources["VERTEX"][0][2]
                           # pycollada code only looks at first source if there is
                           # more than one, so I do too
@@ -319,14 +299,14 @@ class ColladaImport :
                             vert_starts[verts_source_id] = vert_start
                             verts.extend(tuple(v) for v in p.vertex)
                         #end if
-                        these_faces = collect("vertindices")
+                        these_faces = collect("indices")
                         these_smooth_shade = [False] * len(these_faces)
                         these_material_assignments = [len(materials) - 1] * len(these_faces)
                         has_normals = p.normal is not None
                         if has_normals :
                             # TODO import normals
                             these_normcoords = list(p.normal)
-                            these_normindices = collect("normindices")
+                            these_normindices = collect("normal_indices")
                             for i in range(len(these_faces)) :
                                 these_smooth_shade[i] = not is_flat_face \
                                   (
@@ -370,6 +350,8 @@ class ColladaImport :
                         smooth_shade.extend(these_smooth_shade)
                         material_assignments.extend(these_material_assignments)
                     #end if
+                else :
+                    pass # can’t handle [Bound]Polygons for now
                 #end if
             #end for
 
