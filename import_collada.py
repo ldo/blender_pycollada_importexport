@@ -612,10 +612,18 @@ class ColladaImport :
                 if flip :
                     alpha = 1 - alpha
                 #end if
-                b_shader.inputs["Alpha"].default_value = alpha
+                if self.parent._ctx.scene.render.engine == "CYCLES" :
+                    # This setting is ignored by Eevee
+                    b_shader.inputs["Transmission"].default_value = 1 - alpha
+                else :
+                    # This setting would affect Cycles as well,
+                    # which is why I don’t do both.
+                    b_shader.inputs["Alpha"].default_value = alpha
+                #end if
                 if alpha < 1.0 :
                     b_mat.blend_method = "BLEND"
                     b_mat.diffuse_color[3] = alpha
+                      # takes effect in viewport (Workbench renderer)
                 #end if
             #end if
             if isinstance(effect.index_of_refraction, Real) :
