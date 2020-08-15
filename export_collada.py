@@ -242,7 +242,7 @@ class ColladaExport :
             name = mesh_name + "-geom"
             geom = Geometry(self._collada, name, name, sources)
 
-            for slotindex in range(len(b_obj.material_slots)) :
+            for slotindex in range(max(len(b_obj.material_slots), 1)) :
                 slotname = make_slotname(slotindex)
                 smooth = \
                     [
