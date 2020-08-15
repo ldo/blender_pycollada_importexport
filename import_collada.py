@@ -3,6 +3,7 @@ import os
 import math
 from numbers import \
     Real
+import time
 import tempfile
 import shutil
 
@@ -894,12 +895,24 @@ def load(op, ctx, filepath = None, **kwargs) :
     #end dfs
 
 #begin load
+    start_time = time.time()
     c = Collada(filepath, ignore = [DaeBrokenRefError])
+    now = time.time()
+    sys.stderr.write("Time to load .dae file = %.2fs\n" % (now - start_time))
+    start_time = now
     importer = get_import(c)(ctx, c, filepath, **kwargs)
     tf = importer._transformation
     if tf in ("MUL", "APPLY") :
-        for i, obj in enumerate(c.scene.objects("geometry")) :
+        objs = list(c.scene.objects("geometry"))
+        nr_objs = len(objs)
+        last_update = start_time
+        for i, obj in enumerate(objs) :
             b_geoms = importer.geometry(obj)
+            now = time.time()
+            if now - last_update >= 5 :
+                sys.stderr.write("created objects %d/%d\n" % (i, nr_objs))
+                last_update = now
+            #end if
             if tf == "MUL" :
                 tf_mat = importer._orient @ importer._convert_units_matrix(Matrix(obj.matrix))
                 for b_obj in b_geoms :
@@ -916,5 +929,7 @@ def load(op, ctx, filepath = None, **kwargs) :
     for obj in c.scene.objects("camera") :
         importer.camera(obj)
     #end for
+    now = time.time()
+    sys.stderr.write("Time to import to Blender = %.2fs\n" % (now - start_time))
     return {"FINISHED"}
 #end load
