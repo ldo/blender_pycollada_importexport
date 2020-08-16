@@ -271,7 +271,10 @@ class ColladaImport :
             b_meshname = self.name(bgeom.original)
         #end if
         materials = []
-        if self._transform("APPLY") or b_meshname not in bpy.data.meshes :
+        new_mesh = self._transform("APPLY") or b_meshname not in bpy.data.meshes
+          # FIXME: need to check mesh was one I just imported, rather than something
+          # leftover in document.
+        if new_mesh :
             verts = []
             vert_starts = {}
             faces = []
@@ -407,7 +410,9 @@ class ColladaImport :
         self._collection.objects.link(b_obj)
         self._ctx.view_layer.objects.active = b_obj
         for i, m in enumerate(materials) :
-            bpy.ops.object.material_slot_add()
+            if new_mesh :
+                bpy.ops.object.material_slot_add()
+            #end if
             b_obj.material_slots[i].link = "OBJECT"
             b_obj.material_slots[i].material = m
         #end for
@@ -467,43 +472,41 @@ class ColladaImport :
             return
         b_name = self.name(light.original)
         # todo: shared datablocks
-        if b_name not in bpy.data.lights :
-            light_type = tuple \
+        light_type = tuple \
+          (
+            elt
+            for elt in
+                (
+                    (DirectionalLight, "SUN", "direction", direction_matrix),
+                    (PointLight, "POINT", "position", Matrix.Translation),
+                      # note Collada common profile doesn’t support
+                      # direction-dependent light intensity
+                    (SpotLight, "SPOT", ("position", "direction"), position_direction_matrix),
+                )
+            if isinstance(light.original, elt[0])
+          )
+        if len(light_type) != 0 :
+            light_type = light_type[0]
+            b_light = bpy.data.lights.new(b_name, type = light_type[1])
+            b_light.color = light.original.color[:3]
+            self.blender_technique \
               (
-                elt
-                for elt in
-                    (
-                        (DirectionalLight, "SUN", "direction", direction_matrix),
-                        (PointLight, "POINT", "position", Matrix.Translation),
-                          # note Collada common profile doesn’t support
-                          # direction-dependent light intensity
-                        (SpotLight, "SPOT", ("position", "direction"), position_direction_matrix),
-                    )
-                if isinstance(light.original, elt[0])
+                True,
+                light.original,
+                b_light,
+                [
+                    ("energy", float, "energy"),
+                    # more TBD
+                ]
               )
-            if len(light_type) != 0 :
-                light_type = light_type[0]
-                b_light = bpy.data.lights.new(b_name, type = light_type[1])
-                b_light.color = light.original.color[:3]
-                self.blender_technique \
-                  (
-                    True,
-                    light.original,
-                    b_light,
-                    [
-                        ("energy", float, "energy"),
-                        # more TBD
-                    ]
-                  )
-                b_obj = bpy.data.objects.new(b_name, b_light)
-                if isinstance(light_type[2], tuple) :
-                    args = tuple(getattr(light, a) for a in light_type[2])
-                else :
-                    args = (getattr(light, light_type[2]),)
-                #end if
-                b_obj.matrix_world = self._orient @ light_type[3](*args)
-                self._collection.objects.link(b_obj)
+            b_obj = bpy.data.objects.new(b_name, b_light)
+            if isinstance(light_type[2], tuple) :
+                args = tuple(getattr(light, a) for a in light_type[2])
+            else :
+                args = (getattr(light, light_type[2]),)
             #end if
+            b_obj.matrix_world = self._orient @ light_type[3](*args)
+            self._collection.objects.link(b_obj)
         #end if
     #end light
 
