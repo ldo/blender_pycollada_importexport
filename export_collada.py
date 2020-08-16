@@ -121,6 +121,7 @@ class ColladaExport :
     #end node
 
     def obj_camera(self, b_obj) :
+        result = []
         b_cam = b_obj.data
         if b_cam.type == "PERSP" :
             cam_class = PerspectiveCamera
@@ -148,20 +149,17 @@ class ColladaExport :
                 zfar = b_cam.clip_end,
                 **args
               )
-            camnode = self.node \
-              (
-                DATABLOCK.CAMERA.node_nameid(b_obj.name),
-                b_matrix = self._orient @ b_obj.matrix_world
-              )
-            camnode.children.append(CameraNode(cam))
+            result.append(self.matrix(b_obj.matrix_local))
             self._collada.cameras.append(cam)
-            self._scene.nodes.append(camnode)
+            result.append(CameraNode(cam))
         #end if
+        return result
     #end obj_camera
 
     def obj_light(self, b_obj) :
+        result = []
         b_light = b_obj.data
-        v_pos, q_rot, v_scale = (self._orient @ b_obj.matrix_world).decompose()
+        v_pos, q_rot, v_scale = b_obj.matrix_local.decompose()
         if b_light.type == "POINT" :
             light_class, use_pos, use_dirn = PointLight, True, False
         elif b_light.type == "SPOT" :
@@ -188,17 +186,16 @@ class ColladaExport :
                     # more TBD
                 ]
               )
-            lightnode = self.node(DATABLOCK.LAMP.node_nameid(b_obj.name))
-            lightnode.children.append(LightNode(light))
             if use_pos :
-                lightnode.transforms.append(self.matrix(Matrix.Translation((v_pos))))
+                result.append(self.matrix(Matrix.Translation((v_pos))))
             #end if
             if use_dirn :
-                lightnode.transforms.append(self.matrix(q_rot.to_matrix().to_4x4()))
+                result.append(self.matrix(q_rot.to_matrix().to_4x4()))
             #end if
             self._collada.lights.append(light)
-            self._scene.nodes.append(lightnode)
+            result.append(LightNode(light))
         #end if
+        return result
     #end obj_light
 
     def obj_mesh(self, b_obj) :
@@ -339,24 +336,31 @@ class ColladaExport :
 
     obj_type_handlers = \
         {
-            "MESH" : (obj_mesh, DATABLOCK.MESH),
+            "CAMERA" : (obj_camera, DATABLOCK.CAMERA, True),
+            "LIGHT" : (obj_light, DATABLOCK.LAMP, True),
+            "MESH" : (obj_mesh, DATABLOCK.MESH, False),
         }
 
-    def object(self, b_obj, parent = None, do_children = True) :
+    def object(self, b_obj, parent = None) :
         handle_type = self.obj_type_handlers.get(b_obj.type)
         if handle_type != None :
-            b_matrix = self._orient @ b_obj.matrix_world
-            if parent != None :
-                if do_children :
+            if handle_type[2] :
+                if parent != None :
+                    b_matrix = None
+                else :
+                    b_matrix = self._orient.copy()
+                #end if
+            else :
+                if parent != None :
                     b_matrix = b_obj.matrix_local
                 else :
-                    b_matrix = Matrix()
+                    b_matrix = self._orient @ b_obj.matrix_world
                 #end if
             #end if
 
             node = self.node(handle_type[1].node_nameid(b_obj.name), b_matrix)
-            if do_children :
-                children = self._obj_children.get(b_obj.name, set())
+            children = self._obj_children.get(b_obj.name)
+            if children != None :
                 for childname in children :
                     self.object(bpy.data.objects[childname], parent = node)
                 #end for
@@ -488,21 +492,6 @@ def save(op, context, filepath = None, directory = None, **kwargs) :
         if o.parent == None and (not exporter._selected_only or o.select_get()) :
             exporter.object(o)
         #end if
-    #end for
-    # Note that, in Collada, lights and cameras are not part of
-    # the object-parenting hierarchy, the way they are in Blender.
-    # FIXME: actually not true.
-    for action, objtype in \
-        (
-            (exporter.obj_camera, "CAMERA"),
-            (exporter.obj_light, "LIGHT"),
-        ) \
-    :
-        for o in objects :
-            if o.type == objtype and (not exporter._selected_only or o.select_get()) :
-                action(o)
-            #end if
-        #end for
     #end for
     exporter.save(filepath)
     return {"FINISHED"}
