@@ -45,7 +45,7 @@ def idurl(uid) :
 
 class ColladaExport :
 
-    def __init__(self, directory, kwargs) :
+    def __init__(self, objects, directory, kwargs) :
         self._add_blender_extensions = kwargs["add_blender_extensions"]
         self._dir = directory
         self._up_axis = kwargs["up_axis"]
@@ -56,6 +56,20 @@ class ColladaExport :
         else : # "Y_UP" or unspecified
             self._orient = Matrix.Rotation(- 90 * DEG, 4, "X")
         #end if
+        obj_children = {}
+        for obj in objects :
+            parent = obj.parent
+            if parent == None :
+                parentname = None
+            else :
+                parentname = parent.name
+            #end if
+            if parentname not in obj_children :
+                obj_children[parentname] = set()
+            #end if
+            obj_children[parentname].add(obj.name)
+        #end for
+        self._obj_children = obj_children
         self._export_as = kwargs["export_as"] # TODO: NYI
         self._selected_only = kwargs["use_selection"]
         self._geometries = {}
@@ -341,13 +355,10 @@ class ColladaExport :
             #end if
 
             node = self.node(handle_type[1].node_nameid(b_obj.name), b_matrix)
-            # todo: docs say computing b_obj.children takes O(N) time. Perhaps
-            # build my own parent-child mapping table for all objects in scene
-            # to speed this up?
-            if do_children and any(b_obj.children) :
-                self.object(b_obj, parent = node, do_children = False)
-                for child in b_obj.children :
-                    self.object(child, parent = node)
+            if do_children :
+                children = self._obj_children.get(b_obj.name, set())
+                for childname in children :
+                    self.object(bpy.data.objects[childname], parent = node)
                 #end for
             #end if
 
@@ -471,21 +482,23 @@ class ColladaExport :
 #end ColladaExport
 
 def save(op, context, filepath = None, directory = None, **kwargs) :
-    exporter = ColladaExport(directory, kwargs)
-    for o in context.scene.objects :
-        if not exporter._selected_only or o.select_get() :
+    objects = context.scene.objects
+    exporter = ColladaExport(objects, directory, kwargs)
+    for o in objects :
+        if o.parent == None and (not exporter._selected_only or o.select_get()) :
             exporter.object(o)
         #end if
     #end for
     # Note that, in Collada, lights and cameras are not part of
     # the object-parenting hierarchy, the way they are in Blender.
+    # FIXME: actually not true.
     for action, objtype in \
         (
             (exporter.obj_camera, "CAMERA"),
             (exporter.obj_light, "LIGHT"),
         ) \
     :
-        for o in context.scene.objects :
+        for o in objects :
             if o.type == objtype and (not exporter._selected_only or o.select_get()) :
                 action(o)
             #end if
