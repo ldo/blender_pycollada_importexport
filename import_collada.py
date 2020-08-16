@@ -18,7 +18,7 @@ from collada.light import AmbientLight, DirectionalLight, PointLight, SpotLight
 from collada.material import Map
 from collada.polylist import Polylist, BoundPolylist
 from collada.primitive import BoundPrimitive
-from collada.scene import Scene, Node, NodeNode, GeometryNode
+from collada.scene import Scene, Node, NodeNode, CameraNode, GeometryNode, LightNode
 from collada.triangleset import TriangleSet, BoundTriangleSet
 
 COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
@@ -233,7 +233,94 @@ class ColladaImport :
             b_cam.clip_end = self._units * bcam.zfar
         #end if
         self._collection.objects.link(b_obj)
+        return [b_obj]
     #end camera
+
+    def light(self, blight) :
+
+        def direction_matrix(direction) :
+            # calculation follows an answer from
+            # <https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d>
+            reference = Vector((0, 0, -1))
+            direction = Vector(tuple(direction))
+            direction.resize_3d()
+            direction.normalize()
+            cross = reference.cross(direction)
+            fac = Matrix \
+              (
+                [
+                    [0, - cross.z, cross.y, 0],
+                    [cross.z, 0, - cross.x, 0],
+                    [- cross.y, cross.x, 0, 0,],
+                    [0, 0, 0, 1]
+                ]
+              )
+            try :
+                result = \
+                  (
+                        Matrix.Identity(4)
+                    +
+                        fac
+                    +
+                        1 / (1 + reference @ direction) * (fac @ fac)
+                  )
+            except ZeroDivisionError :
+                result = Matrix.Rotation(180 * DEG, 4, "X")
+                  # actually any rotation axis in plane perpendicular to reference will work
+            #end try
+            return result
+        #end direction_matrix
+
+        def position_direction_matrix(position, direction) :
+            return \
+                Matrix.Translation(self._units * position) @ direction_matrix(direction)
+        #end position_direction_matrix
+
+    #begin light
+        result = []
+        if isinstance(blight.original, AmbientLight) :
+            return result
+        b_name = self.name(blight.original)
+        # todo: shared datablocks
+        light_type = tuple \
+          (
+            elt
+            for elt in
+                (
+                    (DirectionalLight, "SUN", "direction", direction_matrix),
+                    (PointLight, "POINT", "position", Matrix.Translation),
+                      # note Collada common profile doesn’t support
+                      # direction-dependent light intensity
+                    (SpotLight, "SPOT", ("position", "direction"), position_direction_matrix),
+                )
+            if isinstance(blight.original, elt[0])
+          )
+        if len(light_type) != 0 :
+            light_type = light_type[0]
+            b_light = bpy.data.lights.new(b_name, type = light_type[1])
+            b_light.color = blight.original.color[:3]
+            self.blender_technique \
+              (
+                True,
+                blight.original,
+                b_light,
+                [
+                    ("energy", float, "energy"),
+                    # more TBD
+                ]
+              )
+            b_obj = bpy.data.objects.new(b_name, b_light)
+            if isinstance(light_type[2], tuple) :
+                args = tuple(getattr(blight, a) for a in light_type[2])
+            else :
+                args = (getattr(blight, light_type[2]),)
+            #end if
+            b_obj.matrix_world = self._orient @ light_type[3](*args)
+            self._collection.objects.link(b_obj)
+            result.append(b_obj)
+        #end if
+        return result
+    #end light
 
     def geometry(self, bgeom) :
 
@@ -427,88 +514,12 @@ class ColladaImport :
         return [b_obj]
     #end geometry
 
-    def light(self, light) :
-
-        def direction_matrix(direction) :
-            # calculation follows an answer from
-            # <https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d>
-            reference = Vector((0, 0, -1))
-            direction = Vector(tuple(direction))
-            direction.resize_3d()
-            direction.normalize()
-            cross = reference.cross(direction)
-            fac = Matrix \
-              (
-                [
-                    [0, - cross.z, cross.y, 0],
-                    [cross.z, 0, - cross.x, 0],
-                    [- cross.y, cross.x, 0, 0,],
-                    [0, 0, 0, 1]
-                ]
-              )
-            try :
-                result = \
-                  (
-                        Matrix.Identity(4)
-                    +
-                        fac
-                    +
-                        1 / (1 + reference @ direction) * (fac @ fac)
-                  )
-            except ZeroDivisionError :
-                result = Matrix.Rotation(180 * DEG, 4, "X")
-                  # actually any rotation axis in plane perpendicular to reference will work
-            #end try
-            return result
-        #end direction_matrix
-
-        def position_direction_matrix(position, direction) :
-            return \
-                Matrix.Translation(self._units * position) @ direction_matrix(direction)
-        #end position_direction_matrix
-
-    #begin light
-        if isinstance(light.original, AmbientLight) :
-            return
-        b_name = self.name(light.original)
-        # todo: shared datablocks
-        light_type = tuple \
-          (
-            elt
-            for elt in
-                (
-                    (DirectionalLight, "SUN", "direction", direction_matrix),
-                    (PointLight, "POINT", "position", Matrix.Translation),
-                      # note Collada common profile doesn’t support
-                      # direction-dependent light intensity
-                    (SpotLight, "SPOT", ("position", "direction"), position_direction_matrix),
-                )
-            if isinstance(light.original, elt[0])
-          )
-        if len(light_type) != 0 :
-            light_type = light_type[0]
-            b_light = bpy.data.lights.new(b_name, type = light_type[1])
-            b_light.color = light.original.color[:3]
-            self.blender_technique \
-              (
-                True,
-                light.original,
-                b_light,
-                [
-                    ("energy", float, "energy"),
-                    # more TBD
-                ]
-              )
-            b_obj = bpy.data.objects.new(b_name, b_light)
-            if isinstance(light_type[2], tuple) :
-                args = tuple(getattr(light, a) for a in light_type[2])
-            else :
-                args = (getattr(light, light_type[2]),)
-            #end if
-            b_obj.matrix_world = self._orient @ light_type[3](*args)
-            self._collection.objects.link(b_obj)
-        #end if
-    #end light
+    obj_type_handlers = \
+        [
+            ("camera", camera, CameraNode),
+            ("light", light, LightNode),
+            ("geometry", geometry, GeometryNode),
+        ]
 
     class Material :
         "interpretation of Collada material settings. Can be subclassed by" \
@@ -753,7 +764,7 @@ class ColladaImport :
         return matctx.name
     #end material
 
-    def node(self, node, parent) :
+    def parent_node(self, node, parent) :
         if isinstance(node, (Node, NodeNode)) :
             b_obj = bpy.data.objects.new(self.name(node), None)
             b_obj.matrix_world = self._orient @ self._convert_units_matrix(Matrix(node.matrix))
@@ -762,16 +773,20 @@ class ColladaImport :
                 b_obj.parent = parent
             #end if
             parent = b_obj
-        elif isinstance(node, GeometryNode) :
-            for bgeom in node.objects("geometry") :
-                b_geoms = self.geometry(bgeom)
-                for b_obj in b_geoms :
-                    b_obj.parent = parent
+        else :
+            handle_type = tuple(h for h in self.obj_type_handlers if isinstance(node, h[2]))
+            if len(handle_type) != 0 :
+                handle_type = handle_type[0]
+                for bobj in node.objects(handle_type[0]) :
+                    b_objs = handle_type[1](self, bobj)
+                    for b_obj in b_objs :
+                        b_obj.parent = parent
+                    #end for
                 #end for
-            #end for
+            #end if
         #end if
         return parent
-    #end node
+    #end parent_node
 
 #end ColladaImport
 
@@ -884,8 +899,8 @@ def load(op, ctx, filepath = None, **kwargs) :
         #end if
     #end children
 
-    def dfs(node, cb, parent = None) :
-        """ Depth first search taking a callback function.
+    def traverse(node, cb, parent = None) :
+        """ Depth-first traversal taking a callback function.
         Its return value will be passed recursively as a parent argument.
 
         :param node: COLLADA node
@@ -893,9 +908,9 @@ def load(op, ctx, filepath = None, **kwargs) :
          """
         parent = cb(node, parent)
         for child in children(node) :
-            dfs(child, cb, parent)
+            traverse(child, cb, parent)
         #end for
-    #end dfs
+    #end traverse
 
 #begin load
     start_time = time.time()
@@ -906,32 +921,28 @@ def load(op, ctx, filepath = None, **kwargs) :
     importer = get_import(c)(ctx, c, filepath, **kwargs)
     tf = importer._transformation
     if tf in ("MUL", "APPLY") :
-        objs = list(c.scene.objects("geometry"))
-        nr_objs = len(objs)
-        last_update = start_time
-        for i, obj in enumerate(objs) :
-            b_geoms = importer.geometry(obj)
-            now = time.time()
-            if now - last_update >= 5 :
-                sys.stderr.write("created objects %d/%d\n" % (i, nr_objs))
-                last_update = now
-            #end if
-            if tf == "MUL" :
-                tf_mat = importer._orient @ importer._convert_units_matrix(Matrix(obj.matrix))
-                for b_obj in b_geoms :
-                    b_obj.matrix_world = tf_mat
-                #end for
-            #end if
+        for handle_type in importer.obj_type_handlers :
+            objs = list(c.scene.objects(handle_type[0]))
+            nr_objs = len(objs)
+            last_update = start_time
+            for i, obj in enumerate(objs) :
+                b_objs = handle_type[1](importer, obj)
+                now = time.time()
+                if now - last_update >= 5 :
+                    sys.stderr.write("created %s objects %d/%d\n" % (handle_type[0], i, nr_objs))
+                    last_update = now
+                #end if
+                if tf == "MUL" and hasattr(obj, "matrix") :
+                    tf_mat = importer._orient @ importer._convert_units_matrix(Matrix(obj.matrix))
+                    for b_obj in b_objs :
+                        b_obj.matrix_world = tf_mat
+                    #end for
+                #end if
+            #end for
         #end for
     elif tf == "PARENT" :
-        dfs(c.scene, importer.node)
+        traverse(c.scene, importer.parent_node)
     #end if
-    for obj in c.scene.objects("light") :
-        importer.light(obj)
-    #end for
-    for obj in c.scene.objects("camera") :
-        importer.camera(obj)
-    #end for
     now = time.time()
     sys.stderr.write("Time to import to Blender = %.2fs\n" % (now - start_time))
     return {"FINISHED"}
