@@ -130,11 +130,18 @@ class ColladaImport :
     #end _transform
 
     def _convert_units_matrix(self, mat) :
-        v_pos, q_rot, v_scale = mat.decompose()
-        return Matrix.Translation(self._units * v_pos) @ q_rot.to_matrix().to_4x4() @ Matrix.Diagonal(v_scale).to_4x4()
+        "converts the translation part of Matrix mat from the specified" \
+        " units in the Collada file to Blender units."
+        mat = mat.copy()
+        for i in range(3) :
+            mat[i][3] *= self._units
+        #end for
+        return mat
     #end _convert_units_matrix
 
     def _convert_units_verts(self, verts) :
+        "converts a sequence of vectors from the specified" \
+        " units in the Collada file to Blender units."
         return \
             list(self._units * Vector(v) for v in verts)
     #end _convert_units_verts
