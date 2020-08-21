@@ -146,7 +146,7 @@ class ColladaImport :
             list(self._units * Vector(v) for v in verts)
     #end _convert_units_verts
 
-    def camera(self, bcam) :
+    def camera(self, bcam, parent_matrix = None) :
 
         def fudge_div(num, den) :
             # needed to cope with some problem files.
@@ -163,7 +163,10 @@ class ColladaImport :
         # todo: shared datablocks
         b_cam = bpy.data.cameras.new(b_name)
         b_obj = bpy.data.objects.new(b_cam.name, b_cam)
-        b_obj.matrix_world = self._orient @ self._convert_units_matrix(Matrix(bcam.matrix))
+        if parent_matrix == None :
+            parent_matrix = self._orient
+        #end if
+        b_obj.matrix_world = parent_matrix @ self._convert_units_matrix(Matrix(bcam.matrix))
         if isinstance(bcam.original, PerspectiveCamera) :
             b_cam.type = "PERSP"
             prop = b_cam.bl_rna.properties.get("lens_unit")
@@ -240,10 +243,10 @@ class ColladaImport :
             b_cam.clip_end = self._units * bcam.zfar
         #end if
         self._collection.objects.link(b_obj)
-        return [b_obj]
+        return b_obj
     #end camera
 
-    def light(self, blight) :
+    def light(self, blight, parent_matrix = None) :
 
         def direction_matrix(direction) :
             # calculation follows an answer from
@@ -284,7 +287,10 @@ class ColladaImport :
         #end position_direction_matrix
 
     #begin light
-        result = []
+        if parent_matrix == None :
+            parent_matrix = self._orient
+        #end if
+        result = None
         if isinstance(blight.original, AmbientLight) :
             return result
         b_name = self.name(blight.original)
@@ -322,14 +328,14 @@ class ColladaImport :
             else :
                 args = (getattr(blight, light_type[2]),)
             #end if
-            b_obj.matrix_world = self._orient @ light_type[3](*args)
+            b_obj.matrix_world = parent_matrix @ light_type[3](*args)
             self._collection.objects.link(b_obj)
-            result.append(b_obj)
+            result = b_obj
         #end if
         return result
     #end light
 
-    def geometry(self, bgeom) :
+    def geometry(self, bgeom, parent_matrix = None) :
 
         def collect_from_elts(p, attrname) :
             return list(tuple(getattr(elt, attrname)) for elt in p)
@@ -501,6 +507,9 @@ class ColladaImport :
 
         b_obj = bpy.data.objects.new(b_meshname, b_mesh)
         b_obj.data = b_mesh
+        if parent_matrix != None :
+            b_obj.matrix_world = parent_matrix
+        #end if
         self._collection.objects.link(b_obj)
         self._ctx.view_layer.objects.active = b_obj
         for i, m in enumerate(materials) :
@@ -518,7 +527,7 @@ class ColladaImport :
             bpy.ops.object.mode_set(mode = "OBJECT")
         #end if
 
-        return [b_obj]
+        return b_obj
     #end geometry
 
     obj_type_handlers = \
@@ -771,10 +780,13 @@ class ColladaImport :
         return matctx.name
     #end material
 
-    def parent_node(self, node, parent) :
+    def parent_node(self, node, parent, node_matrix = None) :
         if isinstance(node, (Node, NodeNode)) :
             b_obj = bpy.data.objects.new(self.name(node), None)
-            b_obj.matrix_world = self._orient @ self._convert_units_matrix(Matrix(node.matrix))
+            b_obj.matrix_world = self._convert_units_matrix(Matrix(node.matrix))
+            if node_matrix != None :
+                b_obj.matrix_world = node_matrix @ b_obj.matrix_world
+            #end if
             self._collection.objects.link(b_obj)
             if parent != None :
                 b_obj.parent = parent
@@ -784,12 +796,17 @@ class ColladaImport :
             handle_type = tuple(h for h in self.obj_type_handlers if isinstance(node, h[2]))
             if len(handle_type) != 0 :
                 handle_type = handle_type[0]
-                for bobj in node.objects(handle_type[0]) :
-                    b_objs = handle_type[1](self, bobj)
-                    for b_obj in b_objs :
-                        b_obj.parent = parent
-                    #end for
-                #end for
+                bobj = list(node.objects(handle_type[0]))
+                assert len(bobj) == 1
+                bobj = bobj[0]
+                b_obj = handle_type[1](self, bobj)
+                if b_obj != None :
+                    if node_matrix != None :
+                        b_obj.matrix_world = node_matrix @ b_obj.matrix_world
+                    #end if
+                    b_obj.parent = parent
+                    parent = b_obj
+                #end if
             #end if
         #end if
         return parent
@@ -894,30 +911,56 @@ def get_import(collada) :
 
 def load(op, ctx, filepath = None, **kwargs) :
 
-    def children(node) :
-        if isinstance(node, Scene) :
-            return node.nodes
-        elif isinstance(node, Node) :
-            return node.children
-        elif isinstance(node, NodeNode) :
-            return node.node.children
-        else :
-            return []
+    def traverse_children(self, node, action, parent) :
+        children = ()
+        empty_children = ()
+        nonempty_children = ()
+        node_matrix = None
+        rule = tuple \
+          (
+            entry
+            for entry in
+                (
+                    (Scene, lambda node : node.nodes, False),
+                    (Node, lambda node : node.children, True),
+                    (NodeNode, lambda node : node.node.children, True),
+                )
+            if isinstance(node, entry[0])
+          )
+        if len(rule) != 0 :
+            rule = rule[0]
+            children = rule[1](node)
+            if rule[2] :
+                empty_children = tuple \
+                  ( # children which would be represented as Empty objects
+                    c
+                    for c in children
+                    if isinstance(c, (Node, NodeNode))
+                  )
+                nonempty_children = tuple \
+                  ( # children which would be presented as objects other than Empties
+                    c
+                    for c in children
+                    if isinstance(c, (CameraNode, GeometryNode, LightNode)) # ControllerNode NYI
+                  )
+                node_matrix = self._convert_units_matrix(Matrix(node.matrix))
+            #end if
         #end if
-    #end children
-
-    def traverse(node, cb, parent = None) :
-        """ Depth-first traversal taking a callback function.
-        Its return value will be passed recursively as a parent argument.
-
-        :param node: COLLADA node
-        :param callable cb:
-         """
-        parent = cb(node, parent)
-        for child in children(node) :
-            traverse(child, cb, parent)
-        #end for
-    #end traverse
+        if node_matrix != None and len(nonempty_children) == 1 :
+            # make the nonempty child the parent of the other children,
+            # instead of creating an Empty for this Node.
+            new_parent = action(nonempty_children[0], parent, node_matrix)
+            for child in empty_children :
+                traverse_children(self, child, action, new_parent)
+            #end for
+        else :
+            # create an Empty for this Node.
+            new_parent = action(node, parent)
+            for child in children :
+                traverse_children(self, child, action, new_parent)
+            #end for
+        #end if
+    #end traverse_children
 
 #begin load
     start_time = time.time()
@@ -933,7 +976,7 @@ def load(op, ctx, filepath = None, **kwargs) :
             nr_objs = len(objs)
             last_update = start_time
             for i, obj in enumerate(objs) :
-                b_objs = handle_type[1](importer, obj)
+                b_obj = handle_type[1](importer, obj)
                 now = time.time()
                 if now - last_update >= 5 :
                     sys.stderr.write("created %s objects %d/%d\n" % (handle_type[0], i, nr_objs))
@@ -941,14 +984,12 @@ def load(op, ctx, filepath = None, **kwargs) :
                 #end if
                 if tf == "MUL" and hasattr(obj, "matrix") :
                     tf_mat = importer._orient @ importer._convert_units_matrix(Matrix(obj.matrix))
-                    for b_obj in b_objs :
-                        b_obj.matrix_world = tf_mat
-                    #end for
+                    b_obj.matrix_world = tf_mat
                 #end if
             #end for
         #end for
     elif tf == "PARENT" :
-        traverse(c.scene, importer.parent_node)
+        traverse_children(importer, c.scene, importer.parent_node, None)
     #end if
     now = time.time()
     sys.stderr.write("Time to import to Blender = %.2fs\n" % (now - start_time))
