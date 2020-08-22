@@ -75,6 +75,7 @@ class ColladaExport :
         self._geometries = {}
         self._materials = {}
         self._collada = Collada()
+        self._collada.xmlnode.getroot().set("version", kwargs["collada_version"])
         self._collada.assetInfo.unitmeter = 1
         self._collada.assetInfo.unitname = "metre"
         self._collada.assetInfo.upaxis = self._up_axis

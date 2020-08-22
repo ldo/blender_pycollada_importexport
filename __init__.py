@@ -135,6 +135,17 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
         subtype = "DIR_PATH",
       )
 
+    collada_version : EnumProperty \
+      (
+        name = "Collada Version",
+        description = "version number to set in output Collada file",
+        items =
+            (
+                ("1.4.1", "1.4.1", ""),
+                ("1.5.0", "1.5.0", ""),
+            ),
+        default = "1.4.1",
+      )
     add_blender_extensions : BoolProperty \
       (
         name = "Add Blender Extensions",
@@ -143,7 +154,7 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
       )
     export_as : EnumProperty \
       ( # todo: not actually implemented in export_collada.py!
-        name= "Export as",
+        name = "Export as",
         items =
             (
                 ("dae_only", "DAE only", ""),
