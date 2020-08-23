@@ -95,7 +95,7 @@ class ColladaImport :
     def name(self, obj) :
         "Trying to get efficient and human readable name, working around" \
         " Blender’s object name limitations."
-        if hasattr(obj, "id") :
+        if hasattr(obj, "id") and obj.id != None :
             origname = obj.id
             if origname in self._name_map :
                 usename = self._name_map[origname]
