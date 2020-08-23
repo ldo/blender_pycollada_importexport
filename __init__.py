@@ -64,7 +64,7 @@ class IMPORT_OT_collada(bpy.types.Operator, ImportHelper) :
 
     filter_glob : StringProperty \
       (
-        default = "*.dae;*.kmz",
+        default = "*.dae;*.zae;*.kmz",
         options = {"HIDDEN"},
       )
     files : CollectionProperty \
@@ -106,7 +106,7 @@ class IMPORT_OT_collada(bpy.types.Operator, ImportHelper) :
               )
             return {"CANCELLED"}
         #end if
-        return import_collada.load(self, context, **kwargs)
+        return import_collada.load(self, context, self.filepath.endswith(".zae"), **kwargs)
     #end execute
 
     def invoke(self, context, event):

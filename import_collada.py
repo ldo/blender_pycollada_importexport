@@ -3,7 +3,9 @@ import os
 import math
 from numbers import \
     Real
+import io
 import time
+import zipfile
 import tempfile
 import shutil
 
@@ -20,6 +22,7 @@ from collada.polylist import Polylist, BoundPolylist
 from collada.primitive import BoundPrimitive
 from collada.scene import Scene, Node, NodeNode, CameraNode, GeometryNode, LightNode
 from collada.triangleset import TriangleSet, BoundTriangleSet
+from collada.xmlutil import etree as ElementTree
 
 COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
 DAE_NS = {"dae": COLLADA_NS}
@@ -909,7 +912,7 @@ def get_import(collada) :
     return ColladaImport
 #end get_import
 
-def load(op, ctx, filepath, **kwargs) :
+def load(op, ctx, is_zae, filepath, **kwargs) :
 
     def traverse_children(self, node, action, parent) :
         children = ()
@@ -964,7 +967,22 @@ def load(op, ctx, filepath, **kwargs) :
 
 #begin load
     start_time = time.time()
-    c = Collada(filepath, ignore = [DaeBrokenRefError])
+    collada_ignore = [DaeBrokenRefError]
+    if is_zae :
+        zip = zipfile.ZipFile(filepath)
+        manifest = zip.read("manifest.xml")
+        manifest = ElementTree.ElementTree(file = io.BytesIO(manifest))
+        dae_root = manifest.getroot().text
+          # TODO: interpret fragment part, if any
+        c = Collada \
+          (
+            filename = io.BytesIO(zip.read(dae_root)),
+            aux_file_loader = zip.read,
+            ignore = collada_ignore
+          )
+    else :
+        c = Collada(filepath, ignore = collada_ignore)
+    #end if
     now = time.time()
     sys.stderr.write("Time to load .dae file = %.2fs\n" % (now - start_time))
     start_time = now
