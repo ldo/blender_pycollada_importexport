@@ -36,11 +36,6 @@ class DATABLOCK(enum.Enum) :
             "%s-%s" % (self.value, name)
     #end nameid
 
-    def node_nameid(self, name) :
-        return \
-            "N%s-%s" % (self.value, name)
-    #end node_nameid
-
 #end DATABLOCK
 
 def idurl(uid) :
@@ -137,12 +132,13 @@ class ColladaExport :
         #end if
     #end blender_technique
 
-    def node(self, b_name, b_matrix = None) :
-        tf = []
+    def node(self, b_matrix = None) :
+        node = Node(id = None, xmlnode = E.node())
+          # construct my own xmlnode to avoid setting an id or name
+          # (should be optional according to Collada spec)
         if b_matrix != None :
-            tf.append(self.matrix(b_matrix))
+            node.transforms.append(self.matrix(b_matrix))
         #end if
-        node = Node(id = b_name, transforms = tf)
         node.save()
         return node
     #end node
@@ -385,7 +381,7 @@ class ColladaExport :
                 #end if
             #end if
 
-            node = self.node(handle_type[1].node_nameid(b_obj.name), b_matrix)
+            node = self.node(b_matrix)
             children = self._obj_children.get(b_obj.name)
             if children != None :
                 for childname in children :
