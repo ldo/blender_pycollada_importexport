@@ -127,7 +127,7 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
     filename_ext = ".dae"
     filter_glob : StringProperty \
       (
-        default = "*.dae;*.kmz",
+        default = "*.dae",
         options = {"HIDDEN"},
       )
     directory : StringProperty \
@@ -158,8 +158,7 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
         items =
             (
                 ("dae_only", "DAE only", ""),
-                ("dae_textures", "DAE and textures", ""),
-                ("kmz", "KMZ with textures", ""),
+                # ("dae_textures", "DAE and textures", ""), # NYI
             ),
         default = "dae_only",
       )
