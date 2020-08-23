@@ -87,8 +87,8 @@ class ColladaExport :
 
     #end __init__
 
-    def save(self, fp) :
-        self._collada.write(fp)
+    def save(self, filepath) :
+        self._collada.write(filepath)
     #end save
 
     def blender_technique(self, as_extra, obj, b_data, attribs) :
@@ -486,7 +486,7 @@ class ColladaExport :
 
 #end ColladaExport
 
-def save(op, context, filepath = None, directory = None, **kwargs) :
+def save(op, context, filepath, directory, **kwargs) :
     objects = context.scene.objects
     exporter = ColladaExport(objects, directory, kwargs)
     for o in objects :

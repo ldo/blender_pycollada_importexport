@@ -909,7 +909,7 @@ def get_import(collada) :
     return ColladaImport
 #end get_import
 
-def load(op, ctx, filepath = None, **kwargs) :
+def load(op, ctx, filepath, **kwargs) :
 
     def traverse_children(self, node, action, parent) :
         children = ()
