@@ -1,5 +1,8 @@
 import math
 import enum
+import io
+import time
+import zipfile
 import numpy as np
 import bpy
 from mathutils import Matrix, Vector
@@ -14,6 +17,7 @@ from collada.scene import Node, Scene
 from collada.scene import CameraNode, GeometryNode, LightNode, MaterialNode
 from collada.scene import MatrixTransform
 from collada.source import FloatSource, InputList
+from collada.xmlutil import etree as ElementTree
 
 DEG = math.pi / 180 # angle unit conversion factor
 
@@ -45,7 +49,8 @@ def idurl(uid) :
 
 class ColladaExport :
 
-    def __init__(self, objects, directory, kwargs) :
+    def __init__(self, is_zae, objects, directory, kwargs) :
+        self._is_zae = is_zae
         self._add_blender_extensions = kwargs["add_blender_extensions"]
         self._dir = directory
         self._up_axis = kwargs["up_axis"]
@@ -88,7 +93,28 @@ class ColladaExport :
     #end __init__
 
     def save(self, filepath) :
-        self._collada.write(filepath)
+        if self._is_zae :
+            timestamp = time.gmtime()[:6]
+            scene_name = "scene.dae"
+            out = zipfile.ZipFile(filepath, "w")
+            manifest = ElementTree.Element("dae_root")
+            manifest.text = scene_name
+            item = zipfile.ZipInfo()
+            item.filename = "manifest.xml"
+            item.compress_type = zipfile.ZIP_DEFLATED
+            item.date_time = timestamp
+            out.writestr(item, ElementTree.tostring(manifest))
+            item = zipfile.ZipInfo()
+            item.filename = scene_name
+            item.compress_type = zipfile.ZIP_DEFLATED
+            item.date_time = timestamp
+            dae = io.BytesIO()
+            self._collada.write(dae)
+            out.writestr(item, dae.getvalue())
+            out.close()
+        else :
+            self._collada.write(filepath)
+        #end if
     #end save
 
     def blender_technique(self, as_extra, obj, b_data, attribs) :
@@ -486,9 +512,9 @@ class ColladaExport :
 
 #end ColladaExport
 
-def save(op, context, filepath, directory, **kwargs) :
+def save(op, context, is_zae, filepath, directory, **kwargs) :
     objects = context.scene.objects
-    exporter = ColladaExport(objects, directory, kwargs)
+    exporter = ColladaExport(is_zae, objects, directory, kwargs)
     for o in objects :
         if o.parent == None and (not exporter._selected_only or o.select_get()) :
             exporter.object(o)

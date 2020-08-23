@@ -180,6 +180,15 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
         default = False,
       )
 
+    def check(self, context) :
+        filepath_changed = False
+        if not self.filepath.endswith((".dae", ".zae")) :
+            self.filepath = os.path.splitext(self.filepath)[0] + ".dae"
+            filepath_changed = True
+        #end if
+        return filepath_changed
+    #end check
+
     def execute(self, context):
         from . import export_collada
         kwargs = self.as_keywords(ignore = ("filter_glob",))
@@ -191,7 +200,7 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
               )
             return {"CANCELLED"}
         #end if
-        return export_collada.save(self, context, **kwargs)
+        return export_collada.save(self, context, self.filepath.endswith(".zae"), **kwargs)
     #end execute
 
 #end EXPORT_OT_collada
