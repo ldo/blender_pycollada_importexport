@@ -26,6 +26,7 @@ class DATABLOCK(enum.Enum) :
     # unique among datablocks of the same type, so these can be used as
     # IDs in XML, with a different prefix for each datablock type.
     CAMERA = "CA"
+    EMPTY = "EM" # actually there is no type-specific datablock for these
     LAMP = "LA"
     MATERIAL = "MA"
     MATERIAL_FX = "MA-FX"
@@ -221,6 +222,11 @@ class ColladaExport :
         return result
     #end obj_light
 
+    def obj_empty(self, b_obj) :
+        result = Node(id = DATABLOCK.EMPTY.nameid(b_obj.name))
+        return [result]
+    #end obj_empty
+
     def obj_mesh(self, b_obj) :
 
         b_mesh = b_obj.data
@@ -360,6 +366,7 @@ class ColladaExport :
     obj_type_handlers = \
         {
             "CAMERA" : (obj_camera, DATABLOCK.CAMERA, True),
+            "EMPTY" : (obj_empty, DATABLOCK.EMPTY, False),
             "LIGHT" : (obj_light, DATABLOCK.LAMP, True),
             "MESH" : (obj_mesh, DATABLOCK.MESH, False),
         }
@@ -381,21 +388,30 @@ class ColladaExport :
                 #end if
             #end if
 
-            node = self.node(b_matrix)
+            obj = handle_type[0](self, b_obj)
+            is_node = len(obj) == 1 and isinstance(obj[0], Node)
+            if is_node :
+                obj = obj[0]
+                assert b_matrix != None
+                obj.transforms.append(self.matrix(b_matrix))
+                node = obj
+            else :
+                node = self.node(b_matrix)
+            #end if
             children = self._obj_children.get(b_obj.name)
             if children != None :
                 for childname in children :
                     self.object(bpy.data.objects[childname], parent = node)
                 #end for
             #end if
-
             if parent != None :
                 parent.children.append(node)
             else :
                 self._scene.nodes.append(node)
             #end if
-
-            node.children.extend(handle_type[0](self, b_obj))
+            if not is_node :
+                node.children.extend(obj)
+            #end if
         #end if
     #end object
 
