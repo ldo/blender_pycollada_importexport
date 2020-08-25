@@ -182,18 +182,24 @@ class ColladaExport :
     def obj_light(self, b_obj) :
         result = []
         b_light = b_obj.data
-        if b_light.type == "POINT" :
-            light_class = PointLight
-        elif b_light.type == "SPOT" :
-            light_class = SpotLight
-        elif b_light.type == "SUN" :
-            light_class = DirectionalLight
+        light_type = tuple \
+          (
+            t for t in
+                (
+                    ("POINT", PointLight),
+                    ("SPOT", SpotLight),
+                    ("SUN", DirectionalLight),
+                )
+            if b.light_type == t[0]
+          )
+        if len(light_type) != 0 :
+            light_type = light_type[0][1]
         else :
-            light_class = None
+            light_type = None
         #end if
-        if light_class != None :
+        if light_type != None :
             # todo: falloff, shared datablock
-            light = light_class \
+            light = light_type \
               (
                 DATABLOCK.LAMP.nameid(b_obj.name),
                 color = tuple(b_light.color) + (1,)
