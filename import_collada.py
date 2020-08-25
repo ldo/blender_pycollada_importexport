@@ -1014,6 +1014,7 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
         manifest = ElementTree.ElementTree(file = io.BytesIO(manifest))
         dae_root = manifest.getroot().text
           # TODO: interpret fragment part, if any
+          # TODO: archive can contain nested sub-archives
         c = Collada \
           (
             filename = io.BytesIO(zip.read(dae_root)),

@@ -32,11 +32,18 @@ class DATABLOCK(enum.Enum) :
     MATERIAL_FX = "MA-FX"
     MESH = "ME"
     SCENE = "SCE"
+    INTERNAL_ID = "IID"
 
     def nameid(self, name) :
         return \
             "%s-%s" % (self.value, name)
     #end nameid
+
+    @property
+    def internal_only(self) :
+        "indicates IDs of this type are not used to name Blender objects on (re)import."
+        return self == DATABLOCK.INTERNAL_ID
+    #end internal_only
 
 #end DATABLOCK
 
@@ -87,8 +94,11 @@ class ColladaExport :
         if asset_technique != None :
             prefixes = E.id_prefixes()
             for k in sorted(DATABLOCK.__members__.keys()) :
-                prefix = E.prefix(name = k, value = DATABLOCK[k].nameid(""))
-                prefixes.append(prefix)
+                v = DATABLOCK[k]
+                if not v.internal_only :
+                    prefix = E.prefix(name = k, value = v.nameid(""))
+                    prefixes.append(prefix)
+                #end if
             #end for
             asset_technique.append(prefixes)
         #end if
@@ -96,6 +106,7 @@ class ColladaExport :
         self._scene = Scene(DATABLOCK.SCENE.nameid("main"), [])
         self._collada.scenes.append(self._scene)
         self._collada.scene = self._scene
+        self._id_seq = 0
 
     #end __init__
 
@@ -158,6 +169,11 @@ class ColladaExport :
             #end for
         #end if
     #end obj_blender_technique
+
+    def next_internal_id(self) :
+        self._id_seq += 1
+        return DATABLOCK.INTERNAL_ID.nameid("%0.5d" % self._id_seq)
+    #end next_internal_id
 
     def node(self, b_matrix = None) :
         node = Node(id = None, xmlnode = E.node())
@@ -270,7 +286,7 @@ class ColladaExport :
 
         #begin encode_mesh
             mesh_name = DATABLOCK.MESH.nameid(b_mesh.name)
-            vert_srcid = mesh_name + "-vertcoords"
+            vert_srcid = self.next_internal_id()
             vert_src = FloatSource \
               (
                 id = vert_srcid,
@@ -281,7 +297,7 @@ class ColladaExport :
             sources = [vert_src]
 
             if any(f for f in b_mesh.polygons if f.use_smooth) :
-                vnorm_srcid = mesh_name + "-vnormals"
+                vnorm_srcid = self.next_internal_id()
                 sources.append \
                   (
                     FloatSource
@@ -294,7 +310,7 @@ class ColladaExport :
             #end if
             flat = [f for f in b_mesh.polygons if not f.use_smooth]
             if any(flat) :
-                fnorm_srcid = mesh_name + "-fnormals"
+                fnorm_srcid = self.next_internal_id()
                 sources.append \
                   (
                     FloatSource
@@ -306,8 +322,7 @@ class ColladaExport :
                   )
             #end if
 
-            name = mesh_name + "-geom"
-            geom = Geometry(self._collada, name, name, sources)
+            geom = Geometry(self._collada, mesh_name, mesh_name, sources)
 
             for slotindex in range(max(len(b_obj.material_slots), 1)) :
                 slotname = make_slotname(slotindex)
