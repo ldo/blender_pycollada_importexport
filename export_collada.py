@@ -117,9 +117,11 @@ class ColladaExport :
         # experimental: add Blender-specific attributes via a custom <technique>.
         if self._add_blender_extensions :
             blendstuff = E.technique(profile = "BLENDER028")
-            for tagname, format, attrname in attribs :
-                subtag = getattr(E, tagname)(format(getattr(b_data, attrname)))
-                blendstuff.append(subtag)
+            for tagname, attrname in attribs :
+                if hasattr(b_data, attrname) :
+                    subtag = getattr(E, tagname)(str(getattr(b_data, attrname)))
+                    blendstuff.append(subtag)
+                #end if
             #end for
             if as_extra :
                 parent = E.extra()
@@ -210,7 +212,11 @@ class ColladaExport :
                 light,
                 b_light,
                 [
-                    ("energy", lambda f : "%.3f" % f, "energy"),
+                    ("angle", "angle"),
+                    ("power", "energy"),
+                    ("shadow_soft_size", "shadow_soft_size"),
+                    ("spot_blend", "spot_blend"),
+                    ("spot_size", "spot_size"),
                     # more TBD
                 ]
               )

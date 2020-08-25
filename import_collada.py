@@ -73,7 +73,7 @@ class ColladaImport :
             if blendstuff != None :
                 for tagname, parse, attrname in attribs :
                     subtag = blendstuff.find(tag(tagname))
-                    if subtag != None :
+                    if subtag != None and hasattr(b_data, attrname) :
                         try :
                             setattr(b_data, attrname, parse(subtag.text))
                         except ValueError as err :
@@ -314,7 +314,11 @@ class ColladaImport :
                 blight.original,
                 b_light,
                 [
-                    ("energy", float, "energy"),
+                    ("angle", float, "angle"),
+                    ("power", float, "energy"),
+                    ("shadow_soft_size", float, "shadow_soft_size"),
+                    ("spot_blend", float, "spot_blend"),
+                    ("spot_size", float, "spot_size"),
                     # more TBD
                 ]
               )
