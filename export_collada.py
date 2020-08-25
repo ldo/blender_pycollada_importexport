@@ -190,7 +190,7 @@ class ColladaExport :
                     ("SPOT", SpotLight),
                     ("SUN", DirectionalLight),
                 )
-            if b.light_type == t[0]
+            if b_light.type == t[0]
           )
         if len(light_type) != 0 :
             light_type = light_type[0][1]
