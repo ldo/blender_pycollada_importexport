@@ -15,7 +15,7 @@ from mathutils import Matrix, Vector
 
 from collada import Collada
 from collada.camera import PerspectiveCamera, OrthographicCamera
-from collada.common import DaeBrokenRefError, tag
+from collada.common import DaeBrokenRefError, DaeObject, tag
 from collada.light import AmbientLight, DirectionalLight, PointLight, SpotLight
 from collada.material import Map
 from collada.polylist import Polylist, BoundPolylist
@@ -28,6 +28,16 @@ COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
 DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
 DEG = math.pi / 180 # angle unit conversion factor
+
+class DATABLOCK :
+    CAMERA = "CAMERA"
+    EMPTY = "EMPTY"
+    LAMP = "LAMP"
+    MATERIAL = "MATERIAL"
+    MATERIAL_FX = "MATERIAL_FX"
+    MESH = "MESH"
+    SCENE = "SCENE"
+#end DATABLOCK
 
 class ColladaImport :
     "Standard COLLADA importer. Subclasses can implement a “match” method" \
@@ -54,6 +64,22 @@ class ColladaImport :
         else : # "Y_UP" or unspecified
             self._orient = Matrix.Rotation(90 * DEG, 4, "X")
         #end if
+        self._id_prefixes = None
+        asset_technique = self.get_blender_technique(True, self._collada.xmlnode.getroot())
+          # I wanted to attach this under <asset>, but pycollada loses it there
+        if asset_technique != None :
+            id_prefixes = asset_technique.find(tag("id_prefixes"))
+            if id_prefixes != None :
+                self._id_prefixes = {}
+                for prefix in id_prefixes.findall(tag("prefix")) :
+                    name = prefix.get("name")
+                    value = prefix.get("value")
+                    if name != None and value != None :
+                        self._id_prefixes[name] = value
+                    #end if
+                #end for
+            #end if
+        #end if
         self._collection = bpy.data.collections.new(basename)
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
@@ -62,10 +88,13 @@ class ColladaImport :
         # experimental: add Blender-specific attributes via a custom <technique>.
         blendstuff = None
         if self._recognize_blender_extensions :
+            if isinstance(obj, DaeObject) :
+                obj = obj.xmlnode
+            #end if
             if as_extra :
-                parent = obj.xmlnode.find(tag("extra"))
+                parent = obj.find(tag("extra"))
             else :
-                parent = obj.xmlnode
+                parent = obj
             #end if
             if parent != None :
                 blendstuff = parent.find(tag("technique") + "[@profile=\"BLENDER028\"]")
@@ -103,11 +132,17 @@ class ColladaImport :
         return blendstuff != None
     #end apply_blender_technique
 
-    def name(self, obj) :
+    def name(self, prefix_name, obj) :
         "Trying to get efficient and human readable name, working around" \
         " Blender’s object name limitations."
         if hasattr(obj, "id") and obj.id != None :
             origname = obj.id
+            if self._id_prefixes != None :
+                prefix = self._id_prefixes.get(prefix_name)
+                if prefix != None and origname.startswith(prefix) :
+                    origname = origname[len(prefix):]
+                #end if
+            #end if
             if origname in self._name_map :
                 usename = self._name_map[origname]
             else :
@@ -170,7 +205,7 @@ class ColladaImport :
         #end fudge_div
 
     #begin camera
-        b_name = self.name(bcam.original)
+        b_name = self.name(DATABLOCK.CAMERA, bcam.original)
         # todo: shared datablocks
         b_cam = bpy.data.cameras.new(b_name)
         b_obj = bpy.data.objects.new(b_cam.name, b_cam)
@@ -297,7 +332,7 @@ class ColladaImport :
         result = None
         if isinstance(blight.original, AmbientLight) :
             return result
-        b_name = self.name(blight.original)
+        b_name = self.name(DATABLOCK.LAMP, blight.original)
         # todo: shared datablocks
         light_type = tuple \
           (
@@ -327,7 +362,6 @@ class ColladaImport :
                     ("shadow_soft_size", float, "shadow_soft_size"),
                     ("spot_blend", float, "spot_blend"),
                     ("spot_size", float, "spot_size"),
-                    # more TBD
                 ]
               )
             b_obj = bpy.data.objects.new(b_name, b_light)
@@ -363,7 +397,7 @@ class ColladaImport :
         b_materials = {}
         for sym, matnode in bgeom.materialnodebysymbol.items() :
             mat = matnode.target
-            b_matname = self.name(mat)
+            b_matname = self.name(DATABLOCK.MATERIAL, mat)
             if b_matname not in bpy.data.materials :
                 b_matname = self.material(mat, b_matname)
             #end if
@@ -372,10 +406,10 @@ class ColladaImport :
 
         if self._transform("APPLY") :
             primitives = bgeom.primitives()
-            b_meshname = self.name(bgeom)
+            b_meshname = self.name(DATABLOCK.MESH, bgeom)
         else :
             primitives = bgeom.original.primitives
-            b_meshname = self.name(bgeom.original)
+            b_meshname = self.name(DATABLOCK.MESH, bgeom.original)
         #end if
         materials = []
         new_mesh = self._transform("APPLY") or b_meshname not in bpy.data.meshes
@@ -786,7 +820,7 @@ class ColladaImport :
 
     def parent_node(self, node, parent, node_matrix = None) :
         if isinstance(node, (Node, NodeNode)) :
-            b_obj = bpy.data.objects.new(self.name(node), None)
+            b_obj = bpy.data.objects.new(self.name(DATABLOCK.EMPTY, node), None)
             b_obj.matrix_world = self._convert_units_matrix(Matrix(node.matrix))
             if node_matrix != None :
                 b_obj.matrix_world = node_matrix @ b_obj.matrix_world

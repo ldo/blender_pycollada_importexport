@@ -9,7 +9,7 @@ from mathutils import Matrix, Vector
 
 from collada import Collada
 from collada.camera import PerspectiveCamera, OrthographicCamera
-from collada.common import E
+from collada.common import DaeObject, E
 from collada.geometry import Geometry
 from collada.light import DirectionalLight, PointLight, SpotLight
 from collada.material import Effect, Material
@@ -82,6 +82,16 @@ class ColladaExport :
         self._collada.assetInfo.unitname = "metre"
         self._collada.assetInfo.upaxis = self._up_axis
         self._collada.assetInfo.save()
+        asset_technique = self.blender_technique(True, self._collada.xmlnode.getroot())
+          # I wanted to attach this under <asset>, but pycollada loses it there
+        if asset_technique != None :
+            prefixes = E.id_prefixes()
+            for k in sorted(DATABLOCK.__members__.keys()) :
+                prefix = E.prefix(name = k, value = DATABLOCK[k].nameid(""))
+                prefixes.append(prefix)
+            #end for
+            asset_technique.append(prefixes)
+        #end if
 
         self._scene = Scene(DATABLOCK.SCENE.nameid("main"), [])
         self._collada.scenes.append(self._scene)
@@ -117,15 +127,18 @@ class ColladaExport :
     def blender_technique(self, as_extra, obj) :
         # experimental: add Blender-specific attributes via a custom <technique>.
         if self._add_blender_extensions :
+            if isinstance(obj, DaeObject) :
+                obj = obj.xmlnode
+            #end if
             blendstuff = E.technique(profile = "BLENDER028")
             if as_extra :
                 parent = E.extra()
             else :
-                parent = obj.xmlnode
+                parent = obj
             #end if
             parent.append(blendstuff)
             if as_extra :
-                obj.xmlnode.append(parent)
+                obj.append(parent)
             #end if
         else :
             blendstuff = None
@@ -228,7 +241,6 @@ class ColladaExport :
                     ("shadow_soft_size", "shadow_soft_size"),
                     ("spot_blend", "spot_blend"),
                     ("spot_size", "spot_size"),
-                    # more TBD
                 ]
               )
             self._collada.lights.append(light)
