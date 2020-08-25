@@ -357,27 +357,19 @@ class ColladaExport :
 
     obj_type_handlers = \
         {
-            "CAMERA" : (obj_camera, DATABLOCK.CAMERA, False),
-            "EMPTY" : (obj_empty, DATABLOCK.EMPTY, False),
-            "LIGHT" : (obj_light, DATABLOCK.LAMP, False),
-            "MESH" : (obj_mesh, DATABLOCK.MESH, False),
+            "CAMERA" : (obj_camera, DATABLOCK.CAMERA),
+            "EMPTY" : (obj_empty, DATABLOCK.EMPTY),
+            "LIGHT" : (obj_light, DATABLOCK.LAMP),
+            "MESH" : (obj_mesh, DATABLOCK.MESH),
         }
 
     def object(self, b_obj, parent = None) :
         handle_type = self.obj_type_handlers.get(b_obj.type)
         if handle_type != None :
-            if handle_type[2] :
-                if parent != None :
-                    b_matrix = None
-                else :
-                    b_matrix = self._orient.copy()
-                #end if
+            if parent != None :
+                b_matrix = b_obj.matrix_local
             else :
-                if parent != None :
-                    b_matrix = b_obj.matrix_local
-                else :
-                    b_matrix = self._orient @ b_obj.matrix_world
-                #end if
+                b_matrix = self._orient @ b_obj.matrix_world
             #end if
 
             obj = handle_type[0](self, b_obj)
