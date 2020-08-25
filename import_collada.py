@@ -290,8 +290,6 @@ class ColladaImport :
 
     def light(self, blight) :
         result = None
-        if isinstance(blight.original, AmbientLight) :
-            return result
         b_name = self.name(DATABLOCK.LAMP, blight.original)
         # todo: shared datablocks
         light_type = tuple \
@@ -299,6 +297,7 @@ class ColladaImport :
             elt
             for elt in
                 (
+                    (AmbientLight, "POINT"),
                     (DirectionalLight, "SUN"),
                     (PointLight, "POINT"),
                     (SpotLight, "SPOT"),
@@ -309,19 +308,39 @@ class ColladaImport :
             light_type = light_type[0]
             b_light = bpy.data.lights.new(b_name, type = light_type[1])
             b_light.color = blight.original.color[:3]
-            self.apply_blender_technique \
-              (
-                True,
-                blight.original,
-                b_light,
-                [
-                    ("angle", float, "angle"),
-                    ("power", float, "energy"),
-                    ("shadow_soft_size", float, "shadow_soft_size"),
-                    ("spot_blend", float, "spot_blend"),
-                    ("spot_size", float, "spot_size"),
-                ]
-              )
+            if isinstance(blight.original, AmbientLight) :
+                # implement as a very large “point” light source
+                # Alternatively, could use this to set background intensity instead.
+                b_light.shadow_soft_size = 10000 # the larger, the softer the terminators
+                b_light.use_shadow = False
+                b_light.use_nodes = True # note: Cycles-only
+                b_light.cycles.cast_shadow = False
+                node_graph = b_light.node_tree
+                b_shader = list(n for n in node_graph.nodes if n.type == "EMISSION")[0]
+                node_x, node_y = b_shader.location
+                falloff = node_graph.nodes.new("ShaderNodeLightFalloff")
+                falloff.location = (node_x - 200, node_y)
+                falloff.inputs["Strength"].default_value = b_shader.inputs["Strength"].default_value
+                node_graph.links.new \
+                  (
+                    falloff.outputs["Constant"],
+                    b_shader.inputs["Strength"],
+                  )
+            else :
+                self.apply_blender_technique \
+                  (
+                    True,
+                    blight.original,
+                    b_light,
+                    [
+                        ("angle", float, "angle"),
+                        ("power", float, "energy"),
+                        ("shadow_soft_size", float, "shadow_soft_size"),
+                        ("spot_blend", float, "spot_blend"),
+                        ("spot_size", float, "spot_size"),
+                    ]
+                  )
+            #end if
             b_obj = bpy.data.objects.new(b_name, b_light)
             self._collection.objects.link(b_obj)
             result = b_obj
