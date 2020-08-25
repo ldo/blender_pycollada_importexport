@@ -31,6 +31,7 @@ class DATABLOCK(enum.Enum) :
     MATERIAL = "MA"
     MATERIAL_FX = "MA-FX"
     MESH = "ME"
+    SCENE = "SCE"
 
     def nameid(self, name) :
         return \
@@ -82,7 +83,7 @@ class ColladaExport :
         self._collada.assetInfo.upaxis = self._up_axis
         self._collada.assetInfo.save()
 
-        self._scene = Scene("main", [])
+        self._scene = Scene(DATABLOCK.SCENE.nameid("main"), [])
         self._collada.scenes.append(self._scene)
         self._collada.scene = self._scene
 
