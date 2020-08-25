@@ -173,7 +173,6 @@ class ColladaExport :
                 zfar = b_cam.clip_end,
                 **args
               )
-            result.append(self.matrix(b_obj.matrix_local))
             self._collada.cameras.append(cam)
             result.append(CameraNode(cam))
         #end if
@@ -183,13 +182,12 @@ class ColladaExport :
     def obj_light(self, b_obj) :
         result = []
         b_light = b_obj.data
-        v_pos, q_rot, v_scale = b_obj.matrix_local.decompose()
         if b_light.type == "POINT" :
-            light_class, use_pos, use_dirn = PointLight, True, False
+            light_class = PointLight
         elif b_light.type == "SPOT" :
-            light_class, use_pos, use_dirn = SpotLight, True, True
+            light_class = SpotLight
         elif b_light.type == "SUN" :
-            light_class, use_pos, use_dirn = DirectionalLight, False, True
+            light_class = DirectionalLight
         else :
             light_class = None
         #end if
@@ -210,12 +208,6 @@ class ColladaExport :
                     # more TBD
                 ]
               )
-            if use_pos :
-                result.append(self.matrix(Matrix.Translation((v_pos))))
-            #end if
-            if use_dirn :
-                result.append(self.matrix(q_rot.to_matrix().to_4x4()))
-            #end if
             self._collada.lights.append(light)
             result.append(LightNode(light))
         #end if
@@ -365,9 +357,9 @@ class ColladaExport :
 
     obj_type_handlers = \
         {
-            "CAMERA" : (obj_camera, DATABLOCK.CAMERA, True),
+            "CAMERA" : (obj_camera, DATABLOCK.CAMERA, False),
             "EMPTY" : (obj_empty, DATABLOCK.EMPTY, False),
-            "LIGHT" : (obj_light, DATABLOCK.LAMP, True),
+            "LIGHT" : (obj_light, DATABLOCK.LAMP, False),
             "MESH" : (obj_mesh, DATABLOCK.MESH, False),
         }
 

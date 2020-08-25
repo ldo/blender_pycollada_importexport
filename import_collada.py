@@ -149,7 +149,7 @@ class ColladaImport :
             list(self._units * Vector(v) for v in verts)
     #end _convert_units_verts
 
-    def camera(self, bcam, parent_matrix = None) :
+    def camera(self, bcam) :
 
         def fudge_div(num, den) :
             # needed to cope with some problem files.
@@ -166,10 +166,6 @@ class ColladaImport :
         # todo: shared datablocks
         b_cam = bpy.data.cameras.new(b_name)
         b_obj = bpy.data.objects.new(b_cam.name, b_cam)
-        if parent_matrix == None :
-            parent_matrix = self._orient
-        #end if
-        b_obj.matrix_world = parent_matrix @ self._convert_units_matrix(Matrix(bcam.matrix))
         if isinstance(bcam.original, PerspectiveCamera) :
             b_cam.type = "PERSP"
             prop = b_cam.bl_rna.properties.get("lens_unit")
@@ -249,7 +245,7 @@ class ColladaImport :
         return b_obj
     #end camera
 
-    def light(self, blight, parent_matrix = None) :
+    def light(self, blight) :
 
         def direction_matrix(direction) :
             # calculation follows an answer from
@@ -290,9 +286,6 @@ class ColladaImport :
         #end position_direction_matrix
 
     #begin light
-        if parent_matrix == None :
-            parent_matrix = self._orient
-        #end if
         result = None
         if isinstance(blight.original, AmbientLight) :
             return result
@@ -331,14 +324,13 @@ class ColladaImport :
             else :
                 args = (getattr(blight, light_type[2]),)
             #end if
-            b_obj.matrix_world = parent_matrix @ light_type[3](*args)
             self._collection.objects.link(b_obj)
             result = b_obj
         #end if
         return result
     #end light
 
-    def geometry(self, bgeom, parent_matrix = None) :
+    def geometry(self, bgeom) :
 
         def collect_from_elts(p, attrname) :
             return list(tuple(getattr(elt, attrname)) for elt in p)
@@ -510,9 +502,6 @@ class ColladaImport :
 
         b_obj = bpy.data.objects.new(b_meshname, b_mesh)
         b_obj.data = b_mesh
-        if parent_matrix != None :
-            b_obj.matrix_world = parent_matrix
-        #end if
         self._collection.objects.link(b_obj)
         self._ctx.view_layer.objects.active = b_obj
         for i, m in enumerate(materials) :
