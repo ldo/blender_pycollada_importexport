@@ -289,46 +289,6 @@ class ColladaImport :
     #end camera
 
     def light(self, blight) :
-
-        def direction_matrix(direction) :
-            # calculation follows an answer from
-            # <https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d>
-            reference = Vector((0, 0, -1))
-            direction = Vector(tuple(direction))
-            direction.resize_3d()
-            direction.normalize()
-            cross = reference.cross(direction)
-            fac = Matrix \
-              (
-                [
-                    [0, - cross.z, cross.y, 0],
-                    [cross.z, 0, - cross.x, 0],
-                    [- cross.y, cross.x, 0, 0,],
-                    [0, 0, 0, 1]
-                ]
-              )
-            try :
-                result = \
-                  (
-                        Matrix.Identity(4)
-                    +
-                        fac
-                    +
-                        1 / (1 + reference @ direction) * (fac @ fac)
-                  )
-            except ZeroDivisionError :
-                result = Matrix.Rotation(180 * DEG, 4, "X")
-                  # actually any rotation axis in plane perpendicular to reference will work
-            #end try
-            return result
-        #end direction_matrix
-
-        def position_direction_matrix(position, direction) :
-            return \
-                Matrix.Translation(self._units * position) @ direction_matrix(direction)
-        #end position_direction_matrix
-
-    #begin light
         result = None
         if isinstance(blight.original, AmbientLight) :
             return result
@@ -339,11 +299,9 @@ class ColladaImport :
             elt
             for elt in
                 (
-                    (DirectionalLight, "SUN", "direction", direction_matrix),
-                    (PointLight, "POINT", "position", Matrix.Translation),
-                      # note Collada common profile doesn’t support
-                      # direction-dependent light intensity
-                    (SpotLight, "SPOT", ("position", "direction"), position_direction_matrix),
+                    (DirectionalLight, "SUN"),
+                    (PointLight, "POINT"),
+                    (SpotLight, "SPOT"),
                 )
             if isinstance(blight.original, elt[0])
           )
@@ -365,11 +323,6 @@ class ColladaImport :
                 ]
               )
             b_obj = bpy.data.objects.new(b_name, b_light)
-            if isinstance(light_type[2], tuple) :
-                args = tuple(getattr(blight, a) for a in light_type[2])
-            else :
-                args = (getattr(blight, light_type[2]),)
-            #end if
             self._collection.objects.link(b_obj)
             result = b_obj
         #end if
