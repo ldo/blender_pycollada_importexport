@@ -58,10 +58,10 @@ class ColladaImport :
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
 
-    def blender_technique(self, as_extra, obj, b_data, attribs) :
+    def get_blender_technique(self, as_extra, obj) :
+        # experimental: add Blender-specific attributes via a custom <technique>.
         blendstuff = None
         if self._recognize_blender_extensions :
-            # experimental: add Blender-specific attributes via a custom <technique>.
             if as_extra :
                 parent = obj.xmlnode.find(tag("extra"))
             else :
@@ -70,10 +70,18 @@ class ColladaImport :
             if parent != None :
                 blendstuff = parent.find(tag("technique") + "[@profile=\"BLENDER028\"]")
             #end if
-            if blendstuff != None :
-                for tagname, parse, attrname in attribs :
+        #end if
+        return blendstuff
+    #end get_blender_technique
+
+    def apply_blender_technique(self, as_extra, obj, b_data, attribs) :
+        # get and apply any custom technique settings for this object.
+        blendstuff = self.get_blender_technique(as_extra, obj)
+        if blendstuff != None :
+            for tagname, parse, attrname in attribs :
+                if hasattr(b_data, attrname) :
                     subtag = blendstuff.find(tag(tagname))
-                    if subtag != None and hasattr(b_data, attrname) :
+                    if subtag != None :
                         try :
                             setattr(b_data, attrname, parse(subtag.text))
                         except ValueError as err :
@@ -89,11 +97,11 @@ class ColladaImport :
                               )
                         #end try
                     #end if
-                #end for
-            #end if
+                #end if
+            #end for
         #end if
         return blendstuff != None
-    #end blender_technique
+    #end apply_blender_technique
 
     def name(self, obj) :
         "Trying to get efficient and human readable name, working around" \
@@ -308,7 +316,7 @@ class ColladaImport :
             light_type = light_type[0]
             b_light = bpy.data.lights.new(b_name, type = light_type[1])
             b_light.color = blight.original.color[:3]
-            self.blender_technique \
+            self.apply_blender_technique \
               (
                 True,
                 blight.original,

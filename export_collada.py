@@ -113,16 +113,10 @@ class ColladaExport :
         #end if
     #end save
 
-    def blender_technique(self, as_extra, obj, b_data, attribs) :
+    def blender_technique(self, as_extra, obj) :
         # experimental: add Blender-specific attributes via a custom <technique>.
         if self._add_blender_extensions :
             blendstuff = E.technique(profile = "BLENDER028")
-            for tagname, attrname in attribs :
-                if hasattr(b_data, attrname) :
-                    subtag = getattr(E, tagname)(str(getattr(b_data, attrname)))
-                    blendstuff.append(subtag)
-                #end if
-            #end for
             if as_extra :
                 parent = E.extra()
             else :
@@ -132,8 +126,24 @@ class ColladaExport :
             if as_extra :
                 obj.xmlnode.append(parent)
             #end if
+        else :
+            blendstuff = None
         #end if
+        return blendstuff
     #end blender_technique
+
+    def obj_blender_technique(self, as_extra, obj, b_data, attribs) :
+        # save any custom technique settings for this object.
+        blendstuff = self.blender_technique(as_extra, obj)
+        if blendstuff != None :
+            for tagname, attrname in attribs :
+                if hasattr(b_data, attrname) :
+                    subtag = getattr(E, tagname)(str(getattr(b_data, attrname)))
+                    blendstuff.append(subtag)
+                #end if
+            #end for
+        #end if
+    #end obj_blender_technique
 
     def node(self, b_matrix = None) :
         node = Node(id = None, xmlnode = E.node())
@@ -206,7 +216,7 @@ class ColladaExport :
                 DATABLOCK.LAMP.nameid(b_obj.name),
                 color = tuple(b_light.color) + (1,)
               )
-            self.blender_technique \
+            self.obj_blender_technique \
               (
                 True,
                 light,
