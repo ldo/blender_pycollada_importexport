@@ -804,6 +804,11 @@ class ColladaImport :
         return parent
     #end parent_node
 
+    @classmethod
+    def match(celf, collada) :
+        return True
+   #end match
+
 #end ColladaImport
 
 class SketchUpImport(ColladaImport) :
