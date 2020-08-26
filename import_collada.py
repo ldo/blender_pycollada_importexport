@@ -150,7 +150,8 @@ class ColladaImport :
                 while usename in self._name_revmap :
                     seq += 1
                     suffix = "-%0.3d" % seq
-                    usename ="%s-%s" % (origname[:MAX_NAME_LENGTH - len(suffix)], suffix)
+                    assert len(suffix) < MAX_NAME_LENGTH
+                    usename ="%s%s" % (origname[:MAX_NAME_LENGTH - len(suffix)], suffix)
                 #end while
                 self._name_map[origname] = usename
                 self._name_revmap[usename] = origname
@@ -161,8 +162,8 @@ class ColladaImport :
                 usename = self._name_map[origname]
             else :
                 self._untitledcount += 1
-                usename = " untitled.%0.3d" % self._untitledcount
-                  # leading space means it can never conflict with any actual XML ID
+                usename = "untitled %0.3d" % self._untitledcount
+                  # space in name means it can never conflict with any actual XML ID
                 self._name_map[origname] = usename
                 self._name_revmap[usename] = origname
             #end if
