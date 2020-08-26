@@ -980,13 +980,15 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
 
     last_update = None
     update_interval = 5
-    obj_count = 0
+    obj_count = nr_objs = 0
 
     def traverse_children(self, node, action, parent) :
         nonlocal last_update, obj_count
         obj_count += 1
         now = time.time()
         if now - last_update >= update_interval :
+            #sys.stderr.write("created %d/%d objects\n" % (obj_count, nr_objs))
+              # nr_objs not computed accurately (see below)
             sys.stderr.write("created %d objects\n" % obj_count)
             last_update = now
         #end if
@@ -1090,6 +1092,16 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
             #end for
         #end for
     elif tf == "PARENT" :
+        nr_objs = sum \
+          (
+            len(c.xmlnode.findall(".//dae:%s" % t, namespaces = DAE_NS))
+            for t in
+              (
+                "node", "instance_node",
+                "instance_camera", "instance_geometry", "instance_light",
+                "camera", "geometry", "light",
+              )
+          ) # fixme: not sure how to come up with a plausible value for this
         last_update = start_time
         traverse_children(importer, c.scene, importer.parent_node, None)
     #end if
