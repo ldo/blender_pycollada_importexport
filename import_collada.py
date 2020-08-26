@@ -1074,7 +1074,11 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
                 now = time.time()
                 if now - last_update >= update_interval :
                     sys.stderr.write("created %s objects %d/%d\n" % (handle_type[0], i, nr_objs))
+                    if i - obj_count < 5 :
+                        sys.stderr.write(" obj “%s”\n" % b_obj.name)
+                    #end if
                     last_update = now
+                    obj_count = i
                 #end if
                 if tf == "MUL" :
                     tf_mat = get_obj_matrix(obj)
