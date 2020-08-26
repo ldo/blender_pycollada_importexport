@@ -925,6 +925,59 @@ def get_import(collada) :
 
 def load(op, ctx, is_zae, filepath, **kwargs) :
 
+    def get_obj_matrix(obj) :
+
+        def direction_matrix(direction) :
+            # calculation follows an answer from
+            # <https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d>
+            reference = Vector((0, 0, -1))
+            direction = Vector(tuple(direction))
+            direction.resize_3d()
+            direction.normalize()
+            cross = reference.cross(direction)
+            fac = Matrix \
+              (
+                [
+                    [0, - cross.z, cross.y, 0],
+                    [cross.z, 0, - cross.x, 0],
+                    [- cross.y, cross.x, 0, 0,],
+                    [0, 0, 0, 1]
+                ]
+              )
+            try :
+                result = \
+                  (
+                        Matrix.Identity(4)
+                    +
+                        fac
+                    +
+                        1 / (1 + reference @ direction) * (fac @ fac)
+                  )
+            except ZeroDivisionError :
+                result = Matrix.Rotation(180 * DEG, 4, "X")
+                  # actually any rotation axis in plane perpendicular to reference will work
+            #end try
+            return result
+        #end direction_matrix
+
+    #begin get_obj_matrix
+        # fixme: BoundSpotLight also has an up direction vector I should probably take into account
+        if hasattr(obj, "matrix") :
+            result = Matrix(obj.matrix)
+        elif hasattr(obj, "position") or hasattr(obj, "direction") :
+            result = Matrix.Identity(4)
+            if hasattr(obj, "direction") :
+                result = direction_matrix(obj.direction)
+            #end if
+            if hasattr(obj, "position") :
+                result = Matrix.Translation(obj.position) @ result
+            #end if
+        else :
+            result = None
+        #end if
+        return result
+    #end get_obj_matrix
+
     def traverse_children(self, node, action, parent) :
         children = ()
         empty_children = ()
@@ -1012,9 +1065,12 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
                     sys.stderr.write("created %s objects %d/%d\n" % (handle_type[0], i, nr_objs))
                     last_update = now
                 #end if
-                if tf == "MUL" and hasattr(obj, "matrix") :
-                    tf_mat = importer._orient @ importer._convert_units_matrix(Matrix(obj.matrix))
-                    b_obj.matrix_world = tf_mat
+                if tf == "MUL" :
+                    tf_mat = get_obj_matrix(obj)
+                    if tf_mat != None :
+                        tf_mat = importer._orient @ importer._convert_units_matrix(tf_mat)
+                        b_obj.matrix_world = tf_mat
+                    #end if
                 #end if
             #end for
         #end for
