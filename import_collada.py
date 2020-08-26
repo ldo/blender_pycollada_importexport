@@ -978,7 +978,18 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
         return result
     #end get_obj_matrix
 
+    last_update = None
+    update_interval = 5
+    obj_count = 0
+
     def traverse_children(self, node, action, parent) :
+        nonlocal last_update, obj_count
+        obj_count += 1
+        now = time.time()
+        if now - last_update >= update_interval :
+            sys.stderr.write("created %d objects\n" % obj_count)
+            last_update = now
+        #end if
         children = ()
         empty_children = ()
         nonempty_children = ()
@@ -1061,7 +1072,7 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
             for i, obj in enumerate(objs) :
                 b_obj = handle_type[1](importer, obj)
                 now = time.time()
-                if now - last_update >= 5 :
+                if now - last_update >= update_interval :
                     sys.stderr.write("created %s objects %d/%d\n" % (handle_type[0], i, nr_objs))
                     last_update = now
                 #end if
@@ -1075,6 +1086,7 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
             #end for
         #end for
     elif tf == "PARENT" :
+        last_update = start_time
         traverse_children(importer, c.scene, importer.parent_node, None)
     #end if
     now = time.time()
