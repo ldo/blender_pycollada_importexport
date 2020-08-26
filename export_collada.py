@@ -29,7 +29,6 @@ class DATABLOCK(enum.Enum) :
     EMPTY = "EM" # actually there is no type-specific datablock for these
     LAMP = "LA"
     MATERIAL = "MA"
-    MATERIAL_FX = "MA-FX"
     MESH = "ME"
     SCENE = "SCE"
     INTERNAL_ID = "IID"
@@ -536,7 +535,7 @@ class ColladaExport :
                 #end if
             #end if
         #end if
-        effect = Effect(DATABLOCK.MATERIAL_FX.nameid(b_mat.name), [], shader, **effect_kwargs)
+        effect = Effect(self.next_internal_id(), [], shader, **effect_kwargs)
         mat = Material(DATABLOCK.MATERIAL.nameid(b_mat.name), b_mat.name, effect)
         self._collada.effects.append(effect)
         self._collada.materials.append(mat)

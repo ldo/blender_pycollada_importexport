@@ -34,7 +34,6 @@ class DATABLOCK :
     EMPTY = "EMPTY"
     LAMP = "LAMP"
     MATERIAL = "MATERIAL"
-    MATERIAL_FX = "MATERIAL_FX"
     MESH = "MESH"
     SCENE = "SCENE"
 #end DATABLOCK
