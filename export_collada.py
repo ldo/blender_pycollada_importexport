@@ -1,3 +1,4 @@
+import os
 import math
 import enum
 import io
@@ -12,7 +13,7 @@ from collada.camera import PerspectiveCamera, OrthographicCamera
 from collada.common import DaeObject, E
 from collada.geometry import Geometry
 from collada.light import DirectionalLight, PointLight, SpotLight
-from collada.material import Effect, Material
+from collada.material import CImage, Effect, Map, Material, Sampler2D, Surface
 from collada.scene import Node, Scene
 from collada.scene import CameraNode, GeometryNode, LightNode, MaterialNode
 from collada.scene import MatrixTransform
@@ -46,16 +47,53 @@ class DATABLOCK(enum.Enum) :
 
 #end DATABLOCK
 
+class EXT_FILE(enum.Enum) :
+
+    TEXTURE = "textures"
+
+    @property
+    def subdir(self) :
+        return self.value
+    #end subdir
+
+#end EXT_FILE
+
 def idurl(uid) :
     return "#" + uid
 #end idurl
 
 class ColladaExport :
 
-    def __init__(self, is_zae, objects, directory, kwargs) :
-        self._is_zae = is_zae
+    def __init__(self, objects, filepath, directory, kwargs) :
+        self._is_zae = kwargs["export_as"] == "zae"
+        self._export_textures = kwargs["export_textures"]
         self._add_blender_extensions = kwargs["add_blender_extensions"]
+        self._filepath = filepath
         self._dir = directory
+        if self._is_zae :
+            self._zip = zipfile.ZipFile(self._filepath, "w")
+            class ZipAttr :
+                compress_type = zipfile.ZIP_DEFLATED
+                file_attr = 0o100644 << 16
+                date_time = time.gmtime()[:6]
+                scene_name = "scene.dae"
+
+                @classmethod
+                def new_item(celf, filename) :
+                    item = zipfile.ZipInfo()
+                    item.compress_type = celf.compress_type
+                    item.external_attr = celf.file_attr
+                    item.date_time = celf.date_time
+                    item.filename = filename
+                    return item
+                #end new_item
+
+            #end ZipAttr
+            self._zipattr = ZipAttr
+        else :
+            self._zip = None
+            self._zipattr = None
+        #end if
         self._up_axis = kwargs["up_axis"]
         if self._up_axis == "Z_UP" :
             self._orient = Matrix.Identity(4)
@@ -78,7 +116,6 @@ class ColladaExport :
             obj_children[parentname].add(obj.name)
         #end for
         self._obj_children = obj_children
-        self._export_as = kwargs["export_as"] # TODO: NYI
         self._selected_only = kwargs["use_selection"]
         self._geometries = {}
         self._materials = {}
@@ -109,28 +146,36 @@ class ColladaExport :
 
     #end __init__
 
-    def save(self, filepath) :
+    def write_ext_file(self, category, filename, contents) :
         if self._is_zae :
-            timestamp = time.gmtime()[:6]
-            scene_name = "scene.dae"
-            out = zipfile.ZipFile(filepath, "w")
-            manifest = ElementTree.Element("dae_root")
-            manifest.text = scene_name
-            item = zipfile.ZipInfo()
-            item.filename = "manifest.xml"
-            item.compress_type = zipfile.ZIP_DEFLATED
-            item.date_time = timestamp
-            out.writestr(item, ElementTree.tostring(manifest))
-            item = zipfile.ZipInfo()
-            item.filename = scene_name
-            item.compress_type = zipfile.ZIP_DEFLATED
-            item.date_time = timestamp
+            out_filename = os.path.join(category.subdir, filename)
+            item = self._zipattr.new_item(out_filename)
+            self._zip.writestr(item, contents)
+        else :
+            outdir = os.path.join(self._dir, category.subdir)
+            os.makedirs(outdir, exist_ok = True)
+            out_filename = os.path.join(category.subdir, filename)
+            out = open(os.path.join(outdir, filename), "wb")
+            out.write(contents)
+            out.close()
+        #end if
+        return out_filename
+    #end write_ext_file
+
+    def save(self) :
+        if self._is_zae :
+            item = self._zipattr.new_item(self._zipattr.scene_name)
             dae = io.BytesIO()
             self._collada.write(dae)
-            out.writestr(item, dae.getvalue())
-            out.close()
+            self._zip.writestr(item, dae.getvalue())
+            manifest = ElementTree.Element("dae_root")
+            manifest.text = self._zipattr.scene_name
+            item = self._zipattr.new_item("manifest.xml")
+            self._zip.writestr(item, ElementTree.tostring(manifest))
+            # all done
+            self._zip.close()
         else :
-            self._collada.write(filepath)
+            self._collada.write(self._filepath)
         #end if
     #end save
 
@@ -455,6 +500,7 @@ class ColladaExport :
                 "diffuse" : tuple(b_mat.diffuse_color[:3]),
                 "double_sided" : not b_mat.use_backface_culling,
             }
+        effect_params = []
         if b_mat.diffuse_color[3] != 1.0 :
             effect_kwargs["transparency"] = b_mat.diffuse_color[3]
         #end if
@@ -472,16 +518,56 @@ class ColladaExport :
                     if not input.is_linked :
                         value = input.default_value
                     else :
-                        # todo: try to extract Map definition
                         value = None
                     #end if
                     return value
                 #end get_input
 
+                def get_input_map(name) :
+                    input = b_shader.inputs[name]
+                    map = None # to begin with
+                    if input.is_linked :
+                        links = input.links
+                          # note docs say this takes O(N) in total nr links in node graph to compute
+                        teximage = list \
+                          (
+                            l.from_node for l in links
+                            if isinstance(l.from_node, bpy.types.ShaderNodeTexImage) and l.from_socket.name == "Color"
+                          )
+                        if len(teximage) != 0 :
+                            teximage = teximage[0].image
+                            if teximage.packed_file != None :
+                                contents = teximage.packed_file.data
+                            else :
+                                contents = open(bpy.path.abspath(teximage.filepath), "rb").read()
+                            #end if
+                            out_filepath = self.write_ext_file \
+                              (
+                                category = EXT_FILE.TEXTURE,
+                                filename = os.path.basename(teximage.filepath),
+                                contents = contents
+                              )
+                            image = CImage(id = self.next_internal_id(), path = out_filepath)
+                            surface = Surface(id = self.next_internal_id(), img = image)
+                            sampler = Sampler2D(id = self.next_internal_id(), surface = surface)
+                            map = Map(sampler = sampler, texcoord = "UVMap")
+                              # TBD match up texcoord with material binding somehow
+                            effect_params.extend([image, surface, sampler])
+                        #end if
+                    #end if
+                    return map
+                #end get_input_map
+
                 value = get_input("Base Color")
                 if value != None :
                     effect_kwargs["diffuse"] = value[:3]
+                elif self._export_textures :
+                    map = get_input_map("Base Color")
+                    if map != None :
+                        effect_kwargs["diffuse"] = map
+                    #end if
                 #end if
+                # todo: support maps for more inputs
                 value = get_input("Metallic")
                 metallic = True
                 if value == None or value == 0 :
@@ -535,7 +621,7 @@ class ColladaExport :
                 #end if
             #end if
         #end if
-        effect = Effect(self.next_internal_id(), [], shader, **effect_kwargs)
+        effect = Effect(self.next_internal_id(), effect_params, shader, **effect_kwargs)
         mat = Material(DATABLOCK.MATERIAL.nameid(b_mat.name), b_mat.name, effect)
         self._collada.effects.append(effect)
         self._collada.materials.append(mat)
@@ -557,14 +643,14 @@ class ColladaExport :
 
 #end ColladaExport
 
-def save(op, context, is_zae, filepath, directory, **kwargs) :
+def save(op, context, filepath, directory, **kwargs) :
     objects = context.scene.objects
-    exporter = ColladaExport(is_zae, objects, directory, kwargs)
+    exporter = ColladaExport(objects, filepath, directory, kwargs)
     for o in objects :
         if o.parent == None and (not exporter._selected_only or o.select_get()) :
             exporter.object(o)
         #end if
     #end for
-    exporter.save(filepath)
+    exporter.save()
     return {"FINISHED"}
 #end save

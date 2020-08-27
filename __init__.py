@@ -153,14 +153,21 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
         default = True,
       )
     export_as : EnumProperty \
-      ( # todo: not actually implemented in export_collada.py!
+      (
         name = "Export as",
         items =
             (
-                ("dae_only", "DAE only", ""),
-                # ("dae_textures", "DAE and textures", ""), # NYI
+                ("dae", "DAE", ""),
+                ("zae", "ZAE", ""),
             ),
-        default = "dae_only",
+        description = "DAE separate file or ZAE all-in-one archive",
+        default = "dae",
+      )
+    export_textures : BoolProperty \
+      (
+        name = "Export Textures",
+        description = "Include texture image files",
+        default = False,
       )
     up_axis : EnumProperty \
       (
@@ -182,8 +189,9 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
 
     def check(self, context) :
         filepath_changed = False
-        if not self.filepath.endswith((".dae", ".zae")) :
-            self.filepath = os.path.splitext(self.filepath)[0] + ".dae"
+        out_ext = (".dae", ".zae")[self.export_as == "zae"]
+        if not self.filepath.endswith(out_ext) :
+            self.filepath = os.path.splitext(self.filepath)[0] + out_ext
             filepath_changed = True
         #end if
         return filepath_changed
@@ -200,7 +208,7 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
               )
             return {"CANCELLED"}
         #end if
-        return export_collada.save(self, context, self.filepath.endswith(".zae"), **kwargs)
+        return export_collada.save(self, context, **kwargs)
     #end execute
 
 #end EXPORT_OT_collada
