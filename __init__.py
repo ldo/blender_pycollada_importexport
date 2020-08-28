@@ -193,6 +193,7 @@ class EXPORT_OT_collada(bpy.types.Operator, ExportHelper) :
         if not self.filepath.endswith(out_ext) :
             self.filepath = os.path.splitext(self.filepath)[0] + out_ext
             filepath_changed = True
+            self.export_textures = self.export_as == "zae"
         #end if
         return filepath_changed
     #end check
