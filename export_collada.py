@@ -34,9 +34,31 @@ class DATABLOCK(enum.Enum) :
     SCENE = "SCE"
     INTERNAL_ID = "IID"
 
+
     def nameid(self, name) :
+        celf = type(self)
+        if self not in celf._name_maps :
+            celf._name_maps[self] = {}
+            celf._name_revmaps[self] = {}
+        #end if
+        name_map = celf._name_maps[self]
+        name_revmap = celf._name_revmaps[self]
+        if name in name_map :
+            clean_name = name_map[name]
+        else :
+            base_clean_name = name.replace(" ", "_")
+              # are spaces the only illegal characters in XML IDs?
+            clean_name = base_clean_name
+            seq = 0
+            while clean_name in name_revmap :
+                seq += 1
+                clean_name = "%s-%0.3d" % (base_clean_name, seq)
+            #end while
+            name_map[name] = clean_name
+            name_revmap[clean_name] = name
+        #end if
         return \
-            "%s-%s" % (self.value, name)
+            "%s-%s" % (self.value, clean_name)
     #end nameid
 
     @property
@@ -46,6 +68,8 @@ class DATABLOCK(enum.Enum) :
     #end internal_only
 
 #end DATABLOCK
+DATABLOCK._name_maps = {}
+DATABLOCK._name_revmaps = {}
 
 class EXT_FILE(enum.Enum) :
 
