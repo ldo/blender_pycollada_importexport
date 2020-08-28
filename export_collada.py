@@ -34,7 +34,6 @@ class DATABLOCK(enum.Enum) :
     SCENE = "SCE"
     INTERNAL_ID = "IID"
 
-
     def nameid(self, name) :
         celf = type(self)
         if self not in celf._name_maps :
@@ -94,6 +93,8 @@ class ColladaExport :
         self._add_blender_extensions = kwargs["add_blender_extensions"]
         self._filepath = filepath
         self._dir = directory
+        self._ext_files_map = {}
+        self._ext_files_revmap = {}
         if self._is_zae :
             self._zip = zipfile.ZipFile(self._filepath, "w")
             class ZipAttr :
@@ -170,18 +171,42 @@ class ColladaExport :
 
     #end __init__
 
-    def write_ext_file(self, category, filename, contents) :
-        if self._is_zae :
-            out_filename = os.path.join(category.subdir, filename)
-            item = self._zipattr.new_item(out_filename)
-            self._zip.writestr(item, contents)
+    def write_ext_file(self, category, obj_name, filename, contents) :
+        if category not in self._ext_files_map :
+            self._ext_files_map[category] = {}
+            self._ext_files_revmap[category] = {}
+        #end if
+        ext_files_map = self._ext_files_map[category]
+        ext_files_revmap = self._ext_files_revmap[category]
+        if obj_name in ext_files_map :
+            # already encountered this external file
+            out_filename = ext_files_map[obj_name]
         else :
-            outdir = os.path.join(self._dir, category.subdir)
-            os.makedirs(outdir, exist_ok = True)
-            out_filename = os.path.join(category.subdir, filename)
-            out = open(os.path.join(outdir, filename), "wb")
-            out.write(contents)
-            out.close()
+            if not self._is_zae :
+                outdir = os.path.join(self._dir, category.subdir)
+                os.makedirs(outdir, exist_ok = True)
+            #end if
+            base_out_filename = os.path.join(category.subdir, filename)
+            out_filename = base_out_filename
+            seq = 0
+            while out_filename in ext_files_revmap :
+                if seq == 0 :
+                    base_parts = os.path.splitext(base_out_filename)
+                #end if
+                seq += 1
+                assert seq < 1000000 # impose some ridiculous but finite upper limit
+                out_filename = "%s-%0.3d%s" % (base_parts[0], seq, base_parts[1])
+            #end while
+            ext_files_map[obj_name] = out_filename
+            ext_files_revmap[out_filename] = obj_name
+            if self._is_zae :
+                item = self._zipattr.new_item(out_filename)
+                self._zip.writestr(item, contents)
+            else :
+                out = open(os.path.join(self._dir, out_filename), "wb")
+                out.write(contents)
+                out.close()
+            #end if
         #end if
         return out_filename
     #end write_ext_file
@@ -568,6 +593,7 @@ class ColladaExport :
                             out_filepath = self.write_ext_file \
                               (
                                 category = EXT_FILE.TEXTURE,
+                                obj_name = teximage.name,
                                 filename = os.path.basename(teximage.filepath),
                                 contents = contents
                               )
