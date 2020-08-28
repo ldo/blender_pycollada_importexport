@@ -115,6 +115,20 @@ class ColladaExport :
 
             #end ZipAttr
             self._zipattr = ZipAttr
+            # First item in archive is uncompressed and named “mimetype”, and
+            # contents is MIME type for archive. This way it ends up at a fixed
+            # offset (filename at 30 bytes from start, contents at 38 bytes) for
+            # easy detection by format-sniffing tools. This convention is used
+            # by ODF and other formats similarly based on Zip archives.
+            mimetype = zipfile.ZipInfo()
+            mimetype.filename = "mimetype"
+            mimetype.compress_type = zipfile.ZIP_STORED
+            mimetype.external_attr = ZipAttr.file_attr
+            mimetype.date_time = (2020, 8, 23, 1, 33, 52)
+              # about when I started getting .zae export working
+            self._zip.writestr(mimetype, b"model/vnd.collada+xml+zip")
+              # extrapolating from the fact that the official type for .dae files
+              # is “model/vnd.collada+xml”
         else :
             self._zip = None
             self._zipattr = None
