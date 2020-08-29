@@ -24,8 +24,6 @@ from collada.scene import Scene, Node, NodeNode, CameraNode, GeometryNode, Light
 from collada.triangleset import TriangleSet, BoundTriangleSet
 from collada.xmlutil import etree as ElementTree
 
-COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
-DAE_NS = {"dae": COLLADA_NS}
 MAX_NAME_LENGTH = 63
 DEG = math.pi / 180 # angle unit conversion factor
 
@@ -43,6 +41,7 @@ class ColladaImport :
     " to identify vendor-specific features they need to handle."
 
     def __init__(self, ctx, collada, filepath, **kwargs) :
+        self.DAE_NS = {"dae": collada.xmlnode.getroot().nsmap[None]}
         basename = os.path.basename(filepath)
         self._ctx = ctx
         self._collada = collada
@@ -832,6 +831,9 @@ class ColladaImport :
 class SketchUpImport(ColladaImport) :
     "SketchUp specific COLLADA import."
 
+    SK_DAE_NS = {"dae" : "http://www.collada.org/2005/11/COLLADASchema"}
+      # SketchUp only uses Collada 1.4.1, as far as I know
+
     class Material(ColladaImport.Material) :
         "SketchUp-specific material handling."
 
@@ -874,13 +876,13 @@ class SketchUpImport(ColladaImport) :
 
     #end Material
 
-    @staticmethod
-    def match_test2(xml) :
+    @classmethod
+    def match_test2(celf, xml) :
         return \
             any \
               (
                 t.get("profile") == "GOOGLEEARTH"
-                for t in xml.findall(".//dae:extra/dae:technique", namespaces = DAE_NS)
+                for t in xml.findall(".//dae:extra/dae:technique", namespaces = celf.SK_DAE_NS)
               )
     #end match_test2
 
@@ -889,15 +891,19 @@ class SketchUpImport(ColladaImport) :
         "Does this look like a Collada file from SketchUp."
 
         def test1(xml) :
+            t1 = xml.find(".//dae:instance_visual_scene", namespaces = celf.SK_DAE_NS)
+            if t1 != None :
+                t1 = t1.get("url")
+            #end if
+            t2 = xml.find(".//dae:authoring_tool", namespaces = celf.SK_DAE_NS)
+            if t2 != None :
+                t2 = t2.text
+            #end if
             return \
                 any \
                   (
                     "SketchUp" in s
-                    for s in
-                        (
-                            xml.find(".//dae:instance_visual_scene", namespaces = DAE_NS).get("url"),
-                            xml.find(".//dae:authoring_tool", namespaces = DAE_NS),
-                        )
+                    for s in (t1, t2)
                     if s != None
                   )
         #end test1
@@ -1095,7 +1101,7 @@ def load(op, ctx, is_zae, filepath, **kwargs) :
     elif tf == "PARENT" :
         nr_objs = sum \
           (
-            len(c.xmlnode.findall(".//dae:%s" % t, namespaces = DAE_NS))
+            len(c.xmlnode.findall(".//dae:%s" % t, namespaces = importer.DAE_NS))
             for t in
               (
                 "node", "instance_node",
