@@ -164,9 +164,8 @@ class ColladaExport :
         self._collada.assetInfo.unitname = "metre"
         self._collada.assetInfo.upaxis = self._up_axis
         self._collada.assetInfo.save()
-        asset_technique = self.blender_technique(True, self._collada.xmlnode.getroot())
-          # I wanted to attach this under <asset>, but pycollada loses it there
-        if asset_technique != None :
+        root_technique = self.blender_technique(True, self._collada.xmlnode.getroot())
+        if root_technique != None :
             prefixes = E.id_prefixes()
             for k in sorted(DATABLOCK.__members__.keys()) :
                 v = DATABLOCK[k]
@@ -175,7 +174,7 @@ class ColladaExport :
                     prefixes.append(prefix)
                 #end if
             #end for
-            asset_technique.append(prefixes)
+            root_technique.append(prefixes)
         #end if
 
         self._scene = Scene(DATABLOCK.SCENE.nameid("main"), [])

@@ -63,10 +63,9 @@ class ColladaImport :
             self._orient = Matrix.Rotation(90 * DEG, 4, "X")
         #end if
         self._id_prefixes = None
-        asset_technique = self.get_blender_technique(True, self._collada.xmlnode.getroot())
-          # I wanted to attach this under <asset>, but pycollada loses it there
-        if asset_technique != None :
-            id_prefixes = asset_technique.find(tag("id_prefixes"))
+        root_technique = self.get_blender_technique(True, self._collada.xmlnode.getroot())
+        if root_technique != None :
+            id_prefixes = root_technique.find(tag("id_prefixes"))
             if id_prefixes != None :
                 self._id_prefixes = {}
                 for prefix in id_prefixes.findall(tag("prefix")) :
