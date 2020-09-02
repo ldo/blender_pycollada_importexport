@@ -10,6 +10,7 @@ import tempfile
 import shutil
 
 import bpy
+import bmesh
 from bpy_extras.image_utils import load_image
 from mathutils import Matrix, Vector
 
@@ -364,6 +365,7 @@ class ColladaImport :
         #end is_flat_face
 
     #begin geometry
+        blendstuff = self.get_blender_technique(True, bgeom.original.xmlnode)
         b_materials = {}
         for sym, matnode in bgeom.materialnodebysymbol.items() :
             mat = matnode.target
@@ -393,6 +395,7 @@ class ColladaImport :
             got_normals = False
             material_assignments = []
             uvcoords = None
+            uvcoord_ids = None
             for p in primitives :
                 if isinstance(p, BoundPrimitive) :
                     b_mat_key = p.original.material
@@ -441,12 +444,21 @@ class ColladaImport :
                                           # pad out with dummies for any prior missing entries
                                         for i in range(len(p.sources["TEXCOORD"]))
                                     ]
+                                uvcoord_ids = tuple(s[2] for s in p.sources["TEXCOORD"])
                             else :
                                 assert len(uvcoords) == len(p.sources["TEXCOORD"]), \
                                   (
-                                        "mismatch in number of UV layers between geometry components: %d vs %d"
+                                        "mismatch in number of UV layers between geometry"
+                                        " components: %d vs %d"
                                     %
                                         (len(uvcoords), len(p.sources["TEXCOORD"]))
+                                  )
+                                assert uvcoord_ids == tuple(s[2] for s in p.sources["TEXCOORD"]), \
+                                  (
+                                        "mismatch between IDs of UV layers between geometry"
+                                        " components: %s vs %s"
+                                    %
+                                        (uvcoord_ids, tuple(s[2] for s in p.sources["TEXCOORD"]))
                                   )
                             #end if
                             assert len(p) == len(these_faces), \
@@ -486,9 +498,28 @@ class ColladaImport :
                 #end for
             #end if
             if uvcoords != None :
+                uv_layers_names = {}
+                if blendstuff != None :
+                    layer_names = blendstuff.find(tag("layer_names"))
+                    if layer_names != None :
+                        for name_entry in layer_names.findall(tag("name")) :
+                            if name_entry.get("type") == "UV" :
+                                layer_name = name_entry.get("name")
+                                layer_refid = name_entry.get("refid")
+                                if layer_name != None and layer_refid != None :
+                                    uv_layers_names[layer_refid] = layer_name
+                                #end if
+                            #end if
+                        #end for
+                    #end if
+                #end if
                 b_mesh_loops = b_mesh.loops
-                for layer in uvcoords :
+                for layer, refid in zip(uvcoords, uvcoord_ids) :
+                    layer_name = uv_layers_names.get(refid.lstrip("#"))
                     uv = b_mesh.uv_layers.new()
+                    if layer_name != None :
+                        uv.name = layer_name
+                    #end if
                     uv_data = uv.data
                     for i, face in enumerate(b_mesh.polygons) :
                         loop_start = face.loop_start
