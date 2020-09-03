@@ -501,7 +501,8 @@ class ColladaExport :
             matnodes.append \
               (
                 MaterialNode(make_slotname(slotindex), self._materials[sname], inputs = [])
-                  # todo: inputs
+                  # I don’t think I’ll bother supporting material inputs. They
+                  # do not easily translate to how Blender implements materials.
               )
         #end for
         b_mesh.free()
