@@ -414,7 +414,12 @@ class ColladaExport :
                   )
               ) # todo: face normal might be different for flat shading
             uv_ids = []
-            for b_uvname, uvlayer in b_mesh.loops.layers.uv.items() :
+            if b_mesh.loops.layers.uv.active != None :
+                active_uv_name = b_mesh.loops.layers.uv.active.name
+            else :
+                active_uv_name = None
+            #end if
+            for i, (b_uvname, uvlayer) in enumerate(b_mesh.loops.layers.uv.items()) :
                 uv_name = self.next_internal_id()
                 uv_ids.append((uv_name, b_uvname))
                 sources.append \
@@ -457,8 +462,11 @@ class ColladaExport :
                     ilist = InputList()
                     ilist.addInput(0, "VERTEX", idurl(vert_srcid))
                     ilist.addInput(0, "NORMAL", idurl(vnorm_srcid))
+                    setnr = 0
                     for u in uv_ids :
-                        ilist.addInput(1, "TEXCOORD", idurl(u[0]))
+                        setnr += 1
+                        ilist.addInput(1, "TEXCOORD", idurl(u[0]), (setnr, 0)[u[1] == active_uv_name])
+                        # always assign set 0 to active UV layer
                     #end for
                     indices = []
                     for face in b_mesh.faces :
@@ -500,9 +508,13 @@ class ColladaExport :
             #end if
             matnodes.append \
               (
-                MaterialNode(make_slotname(slotindex), self._materials[sname], inputs = [])
-                  # I don’t think I’ll bother supporting material inputs. They
-                  # do not easily translate to how Blender implements materials.
+                MaterialNode
+                  (
+                    make_slotname(slotindex),
+                    self._materials[sname],
+                    inputs = [("ACTIVE_UV", "TEXCOORD", "0")]
+                      # always assign set 0 to active UV layer
+                  )
               )
         #end for
         b_mesh.free()
@@ -611,8 +623,7 @@ class ColladaExport :
                             image = CImage(id = self.next_internal_id(), path = out_filepath)
                             surface = Surface(id = self.next_internal_id(), img = image)
                             sampler = Sampler2D(id = self.next_internal_id(), surface = surface)
-                            map = Map(sampler = sampler, texcoord = "UVMap")
-                              # TBD match up texcoord with material binding somehow
+                            map = Map(sampler = sampler, texcoord = "ACTIVE_UV")
                             effect_params.extend([image, surface, sampler])
                         #end if
                     #end if
