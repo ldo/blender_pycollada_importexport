@@ -37,6 +37,11 @@ class DATABLOCK :
     SCENE = "SCENE"
 #end DATABLOCK
 
+def unurlid(uid) :
+    assert uid.startswith("#")
+    return uid[1:]
+#end unurlid
+
 class ColladaImport :
     "Standard COLLADA importer. Subclasses can implement a “match” method" \
     " to identify vendor-specific features they need to handle."
@@ -515,7 +520,7 @@ class ColladaImport :
                 #end if
                 b_mesh_loops = b_mesh.loops
                 for layer, refid in zip(uvcoords, uvcoord_ids) :
-                    layer_name = uv_layers_names.get(refid.lstrip("#"))
+                    layer_name = uv_layers_names.get(unurlid(refid))
                     uv = b_mesh.uv_layers.new()
                     if layer_name != None :
                         uv.name = layer_name
