@@ -1,6 +1,7 @@
 import os
 import math
 import enum
+import re
 import io
 import time
 import zipfile
@@ -22,6 +23,16 @@ from collada.source import FloatSource, InputList
 from collada.xmlutil import etree as ElementTree
 
 DEG = math.pi / 180 # angle unit conversion factor
+
+XML_NCNAMESTART_CHARS = \
+    r"\u0041-\u005A\u005F\u0061-\u007A\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF" \
+    r"\u0370-\u037D\u037F-\u1FFF\u200C\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF" \
+    r"\uF900-\uFDCF\uFDF0-\uFFFD\U00010000-\U000EFFFF"
+      # valid chars that can start an NCName, as per the xml:id spec;
+      # these are all of NameStartChar (see section 2.3 of the XML 1.0
+      # or 1.1 specs) except “:”.
+XML_NCNAMEREST_CHARS = r"\u002D\u002E\u0030-\u0039\u00B7\u0300-\u036F\u203F\u2040"
+      # valid chars that, together with XML_NCNAMESTART_CHARS, can make up the rest of an NCName.
 
 class DATABLOCK(enum.Enum) :
     # Note on uniqueness of IDs: Blender’s datablock names have to be
@@ -45,9 +56,21 @@ class DATABLOCK(enum.Enum) :
         name_revmap = celf._name_revmaps[self]
         if name in name_map :
             clean_name = name_map[name]
+        elif len(name) == 0 :
+            # allowed for generating id-prefix-mapping table
+            clean_name = ""
         else :
-            base_clean_name = name.replace(" ", "_")
-              # are spaces the only illegal characters in XML IDs?
+            clean_char = "_" # permissible anywhere in an XML ID
+            base_clean_name = \
+                (
+                    (name[0], clean_char)
+                        [re.fullmatch("[^" + XML_NCNAMESTART_CHARS + "]", name[0]) != None]
+                +
+                    clean_char.join
+                      (
+                        re.split("[^" + XML_NCNAMESTART_CHARS + XML_NCNAMEREST_CHARS + "]", name[1:])
+                      )
+                )
             clean_name = base_clean_name
             seq = 0
             while clean_name in name_revmap :
