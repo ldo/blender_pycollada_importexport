@@ -63,13 +63,9 @@ class DATABLOCK(enum.Enum) :
             clean_char = "_" # permissible anywhere in an XML ID
             base_clean_name = \
                 (
-                    (name[0], clean_char)
-                        [re.fullmatch("[^" + XML_NCNAMESTART_CHARS + "]", name[0]) != None]
+                    re.sub("^[^" + XML_NCNAMESTART_CHARS + "]$", clean_char, name[0])
                 +
-                    clean_char.join
-                      (
-                        re.split("[^" + XML_NCNAMESTART_CHARS + XML_NCNAMEREST_CHARS + "]", name[1:])
-                      )
+                    re.sub("[^" + XML_NCNAMESTART_CHARS + XML_NCNAMEREST_CHARS + "]", clean_char, name[1:])
                 )
             clean_name = base_clean_name
             seq = 0
