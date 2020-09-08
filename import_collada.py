@@ -336,6 +336,46 @@ class ColladaImport :
                     b_shader.inputs["Strength"],
                   )
             else :
+                for attr, battr, conv in \
+                    (
+                        ("falloff_ang", "spot_size", lambda ang : ang * DEG),
+                        ("falloff_exp", "spot_blend", lambda exp : 1 / (1 + exp)),
+                          # some reasonable conversion
+                    ) \
+                :
+                    val = getattr(blight, attr, None)
+                    if val != None :
+                        setattr(b_light, battr, conv(val))
+                    #end if
+                #end for
+                atten = filter \
+                  (
+                    lambda val : val[1] != None and val[1] != 0,
+                    (
+                        (a[0], getattr(blight, a[1], None))
+                        for a in ((0, "constant_att"), (1, "linear_att"), (2, "quad_att"))
+                    )
+                  )
+                # Note I can implement only one falloff factor; trying to perform
+                # various arithmetic on the different outputs from the ShaderNodeLightFalloff
+                # node doesn’t seem to produce meaningful results.
+                atten = sorted(atten, key = lambda a : a[1], reverse = True)
+                  # stable sort to prefer constant over linear over quadratic
+                if len(atten) != 0 :
+                    pow, factor = atten[0]
+                    b_light.use_nodes = True # note: Cycles-only
+                    b_shader, node_graph = find_main_shader(b_light, "EMISSION")
+                    node_x, node_y = b_shader.location
+                    falloff = node_graph.nodes.new("ShaderNodeLightFalloff")
+                    falloff.location = (node_x - 200, node_y)
+                    falloff.inputs["Strength"].default_value = \
+                        b_shader.inputs["Strength"].default_value / factor
+                    node_graph.links.new \
+                      (
+                        falloff.outputs[("Constant", "Linear", "Quadratic")[pow]],
+                        b_shader.inputs["Strength"],
+                      )
+                #end if
                 self.apply_blender_technique \
                   (
                     True,
