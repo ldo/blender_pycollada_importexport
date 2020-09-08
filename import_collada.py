@@ -42,6 +42,12 @@ def unurlid(uid) :
     return uid[1:]
 #end unurlid
 
+def find_main_shader(in_datablock, type_name) :
+    node_graph = in_datablock.node_tree
+    shader = list(n for n in node_graph.nodes if n.type == type_name)[0]
+    return shader, node_graph
+#end find_main_shader
+
 class ColladaImport :
     "Standard COLLADA importer. Subclasses can implement a “match” method" \
     " to identify vendor-specific features they need to handle."
@@ -319,8 +325,7 @@ class ColladaImport :
                 b_light.use_shadow = False
                 b_light.use_nodes = True # note: Cycles-only
                 b_light.cycles.cast_shadow = False
-                node_graph = b_light.node_tree
-                b_shader = list(n for n in node_graph.nodes if n.type == "EMISSION")[0]
+                b_shader, node_graph = find_main_shader(b_light, "EMISSION")
                 node_x, node_y = b_shader.location
                 falloff = node_graph.nodes.new("ShaderNodeLightFalloff")
                 falloff.location = (node_x - 200, node_y)
@@ -603,7 +608,7 @@ class ColladaImport :
             self.b_mat = b_mat
             self.name = b_mat.name # name actually assigned by Blender
             b_mat.use_nodes = True
-            b_shader = list(n for n in b_mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")[0]
+            b_shader = find_main_shader(b_mat, "BSDF_PRINCIPLED")[0]
             self.b_shader = b_shader
             self.node_x, self.node_y = b_shader.location
             self.node_x -= 350
