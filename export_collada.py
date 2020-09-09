@@ -419,21 +419,14 @@ class ColladaExport :
                 if found :
                     strength = the_node.inputs["Strength"].default_value
                     if strength != 0 :
-                        atten = tuple \
-                          (
-                            i[1] for i in
-                                (
-                                    ("Constant", "constant_att"),
-                                    ("Linear", "linear_att"),
-                                    ("Quadratic", "quad_att"),
-                                )
-                            if i[0] == output_name
-                          )
-                        if len(atten) != 0 :
-                            atten = atten[0]
-                            if hasattr(light, atten) :
-                                setattr(light, atten, 1 / strength)
-                            #end if
+                        atten = \
+                            {
+                                "Constant" : "constant_att",
+                                "Linear" : "linear_att",
+                                "Quadratic" : "quad_att",
+                            }.get(output_name)
+                        if atten != None and hasattr(light, atten) :
+                            setattr(light, atten, 1 / strength)
                         #end if
                     #end if
                 #end if
