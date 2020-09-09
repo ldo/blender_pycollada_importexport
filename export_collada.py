@@ -366,12 +366,78 @@ class ColladaExport :
             light_type = None
         #end if
         if light_type != None :
-            # todo: falloff, shared datablock
+            # todo: shared datablock
             light = light_type \
               (
                 DATABLOCK.LAMP.nameid(b_obj.name),
                 color = tuple(b_light.color) + (1,)
               )
+            for attr, battr, conv in \
+                (
+                  # conversions are inverses of those done in importer
+                    ("falloff_ang", "spot_size", lambda ang : ang / DEG),
+                    ("falloff_exp", "spot_blend", lambda blend : 1 / max(blend, 0.00001) - 1),
+                      # some very small-magnitude positive value to avoid division by zero
+                ) \
+            :
+                if hasattr(b_light, battr) and hasattr(light, attr) :
+                    setattr(light, attr, conv(getattr(b_light, battr)))
+                #end if
+            #end for
+            if b_light.use_nodes :
+                node_graph = b_light.node_tree
+                the_node = list(n for n in node_graph.nodes if n.type == "OUTPUT_LIGHT")[0]
+                trace_path = iter \
+                  (
+                    (
+                        ("Surface", "EMISSION"),
+                        ("Strength", "LIGHT_FALLOFF"),
+                    )
+                  )
+                found = False
+                while True :
+                    trace = next(trace_path, None)
+                    if trace == None :
+                        if not the_node.inputs["Strength"].is_linked :
+                            found = True
+                        #end if
+                        break
+                    #end if
+                    input_name, want_shader_type = trace
+                    input = the_node.inputs[input_name]
+                    if not input.is_linked :
+                        break
+                    links = input.links
+                      # note docs say this takes O(N) in total nr links in node graph to compute
+                    if len(links) == 0 :
+                        break
+                    the_node = links[0].from_node
+                    if the_node.type != want_shader_type :
+                        break
+                    output_name = links[0].from_socket.name
+                #end while
+                if found :
+                    strength = the_node.inputs["Strength"].default_value
+                    if strength != 0 :
+                        atten = tuple \
+                          (
+                            i[1] for i in
+                                (
+                                    ("Constant", "constant_att"),
+                                    ("Linear", "linear_att"),
+                                    ("Quadratic", "quad_att"),
+                                )
+                            if i[0] == output_name
+                          )
+                        if len(atten) != 0 :
+                            atten = atten[0]
+                            if hasattr(light, atten) :
+                                setattr(light, atten, 1 / strength)
+                            #end if
+                        #end if
+                    #end if
+                #end if
+            #end if
             self.obj_blender_technique \
               (
                 True,
