@@ -343,9 +343,11 @@ class ColladaImport :
                           # some reasonable conversion
                     ) \
                 :
-                    val = getattr(blight, attr, None)
-                    if val != None :
-                        setattr(b_light, battr, conv(val))
+                    if hasattr(b_light, battr) :
+                        val = getattr(blight, attr, None)
+                        if val != None :
+                            setattr(b_light, battr, conv(val))
+                        #end if
                     #end if
                 #end for
                 atten = filter \
