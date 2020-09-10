@@ -89,6 +89,7 @@ class ColladaImport :
                 #end for
             #end if
         #end if
+        self._imported = {}
         self._collection = bpy.data.collections.new(basename)
         self._ctx.scene.collection.children.link(self._collection)
     #end __init__
@@ -180,6 +181,26 @@ class ColladaImport :
         #end if
         return usename
     #end name
+
+    def get_already_imported(self, category, b_name) :
+        result = None
+        names = self._imported.get(category)
+        if names != None :
+            result = names.get(b_name)
+        #end if
+        return result
+    #end get_already_imported
+
+    def set_already_imported(self, category, b_name, b_name_assigned) :
+        if not self._transform("APPLY") :
+            if category not in self._imported :
+                self._imported[category] = {}
+            #end if
+            names = self._imported[category]
+            assert b_name not in names
+            names[b_name] = b_name_assigned
+        #end if
+    #end set_already_imported
 
     def _transform(self, t) :
         return self._transformation == t
@@ -436,9 +457,7 @@ class ColladaImport :
             b_meshname = self.name(DATABLOCK.MESH, bgeom.original)
         #end if
         materials = []
-        new_mesh = self._transform("APPLY") or b_meshname not in bpy.data.meshes
-          # FIXME: need to check mesh was one I just imported, rather than something
-          # leftover in document.
+        new_mesh = self._transform("APPLY") or not self.get_already_imported("MESH", b_meshname) != None
         if new_mesh :
             verts = []
             vert_starts = {}
@@ -458,10 +477,15 @@ class ColladaImport :
                 materials.append(b_mat)
 
                 if isinstance(p, (TriangleSet, BoundTriangleSet, Polylist, BoundPolylist)) :
+                    if isinstance(p, BoundPrimitive) :
+                        op = p.original
+                    else :
+                        op = p
+                    #end if
                     these_faces = p.vertex_index
                     if these_faces is not None and len(these_faces) != 0 :
                         collect = lambda a : collect_from_elts(p, a)
-                        verts_source_id = p.sources["VERTEX"][0][2]
+                        verts_source_id = op.sources["VERTEX"][0][2]
                           # pycollada code only looks at first source if there is
                           # more than one, so I do too
                           # (same for normals)
@@ -488,29 +512,29 @@ class ColladaImport :
                             #end for
                             got_normals = True
                         #end if
-                        if "TEXCOORD" in p.sources and len(p.sources["TEXCOORD"]) != 0 :
+                        if "TEXCOORD" in op.sources and len(op.sources["TEXCOORD"]) != 0 :
                             if uvcoords == None :
                                 uvcoords = \
                                     [
                                         [[(0, 0)] * len(f) for f in faces]
                                           # pad out with dummies for any prior missing entries
-                                        for i in range(len(p.sources["TEXCOORD"]))
+                                        for i in range(len(op.sources["TEXCOORD"]))
                                     ]
-                                uvcoord_ids = tuple(s[2] for s in p.sources["TEXCOORD"])
+                                uvcoord_ids = tuple(s[2] for s in op.sources["TEXCOORD"])
                             else :
-                                assert len(uvcoords) == len(p.sources["TEXCOORD"]), \
+                                assert len(uvcoords) == len(op.sources["TEXCOORD"]), \
                                   (
                                         "mismatch in number of UV layers between geometry"
                                         " components: %d vs %d"
                                     %
-                                        (len(uvcoords), len(p.sources["TEXCOORD"]))
+                                        (len(uvcoords), len(op.sources["TEXCOORD"]))
                                   )
-                                assert uvcoord_ids == tuple(s[2] for s in p.sources["TEXCOORD"]), \
+                                assert uvcoord_ids == tuple(s[2] for s in op.sources["TEXCOORD"]), \
                                   (
                                         "mismatch between IDs of UV layers between geometry"
                                         " components: %s vs %s"
                                     %
-                                        (uvcoord_ids, tuple(s[2] for s in p.sources["TEXCOORD"]))
+                                        (uvcoord_ids, tuple(s[2] for s in op.sources["TEXCOORD"]))
                                   )
                             #end if
                             assert len(p) == len(these_faces), \
@@ -538,6 +562,7 @@ class ColladaImport :
             #end for
 
             b_mesh = bpy.data.meshes.new(b_meshname)
+            self.set_already_imported("MESH", b_meshname, b_mesh.name)
             b_mesh.from_pydata \
               (
                 self._convert_units_verts(verts),
@@ -587,7 +612,7 @@ class ColladaImport :
             #end for
             b_mesh.update()
         else :
-            b_mesh = bpy.data.meshes[b_meshname]
+            b_mesh = bpy.data.meshes[self.get_already_imported("MESH", b_meshname)]
             for p in primitives :
                 if isinstance(p, BoundPrimitive) :
                     b_mat_key = p.original.material
