@@ -153,9 +153,9 @@ class ColladaImport :
             while True :
                 try :
                     s = b.decode()
-                except UnicodeDecodeError :
+                except UnicodeDecodeError as err :
                     # assume truncated UTF-8 encoding
-                    b = b[:-1]
+                    b = b[:err.start]
                 else :
                     break
                 #end try
