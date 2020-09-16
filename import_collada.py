@@ -25,7 +25,7 @@ from collada.scene import Scene, Node, NodeNode, CameraNode, GeometryNode, Light
 from collada.triangleset import TriangleSet, BoundTriangleSet
 from collada.xmlutil import etree as ElementTree
 
-MAX_NAME_LENGTH = 63
+MAX_NAME_LENGTH = 63 # note this is bytes, not characters
 DEG = math.pi / 180 # angle unit conversion factor
 
 class DATABLOCK :
@@ -145,6 +145,25 @@ class ColladaImport :
     def name(self, prefix_name, obj) :
         "Trying to get efficient and human readable name, working around" \
         " Blender’s object name limitations."
+
+        def truncate_bytes(s, maxlen) :
+            "returns string s truncated as necessary so its UTF-8 encoding" \
+            " does not exceed maxlen bytes."
+            b = s.encode()[:maxlen]
+            while True :
+                try :
+                    s = b.decode()
+                except UnicodeDecodeError :
+                    # assume truncated UTF-8 encoding
+                    b = b[:-1]
+                else :
+                    break
+                #end try
+            #end while
+            return s
+        #end truncate_bytes
+
+    #begin name
         if hasattr(obj, "id") and obj.id != None :
             origname = obj.id
             if self._id_prefixes != None :
@@ -156,13 +175,14 @@ class ColladaImport :
             if origname in self._name_map :
                 usename = self._name_map[origname]
             else :
-                usename = origname[:MAX_NAME_LENGTH]
+                usename = truncate_bytes(origname, MAX_NAME_LENGTH)
                 seq = 0
                 while usename in self._name_revmap :
                     seq += 1
                     suffix = "-%0.3d" % seq
-                    assert len(suffix) < MAX_NAME_LENGTH
-                    usename ="%s%s" % (origname[:MAX_NAME_LENGTH - len(suffix)], suffix)
+                    assert len(suffix) == len(suffix.encode()) < MAX_NAME_LENGTH
+                    usename = \
+                        "%s%s" % (truncate_bytes(origname, MAX_NAME_LENGTH - len(suffix)), suffix)
                 #end while
                 self._name_map[origname] = usename
                 self._name_revmap[usename] = origname
