@@ -180,9 +180,10 @@ class ColladaImport :
                 while usename in self._name_revmap :
                     seq += 1
                     suffix = "-%0.3d" % seq
-                    assert len(suffix) == len(suffix.encode()) < MAX_NAME_LENGTH
+                    suffix_len = len(suffix.encode())
+                    assert suffix_len < MAX_NAME_LENGTH
                     usename = \
-                        "%s%s" % (truncate_bytes(origname, MAX_NAME_LENGTH - len(suffix)), suffix)
+                        "%s%s" % (truncate_bytes(origname, MAX_NAME_LENGTH - suffix_len), suffix)
                 #end while
                 self._name_map[origname] = usename
                 self._name_revmap[usename] = origname
