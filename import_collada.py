@@ -807,6 +807,9 @@ class ColladaImport :
         #end rendering_emission
 
         def color_or_texture(self, color_or_texture, tex_name, shader_input_name, set_mat_color = False) :
+            # does common handling of a shader input (color_or_texture) which might be
+            # supplied by a Map or an (R, G, B, A) tuple. set_mat_color indicates
+            # whether to try to set the viewport material colour as well.
 
             def try_texture(c_image) :
                 basename = os.path.basename(c_image.path)
