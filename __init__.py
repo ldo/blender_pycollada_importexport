@@ -30,7 +30,6 @@ bl_info = \
         "warning" : "",
         "wiki_url" : "https://github.com/skrat/blender-pycollada/wiki",
         "tracker_url" : "https://github.com/skrat/blender-pycollada/issues",
-        "support" : "TESTING",
         "category" : "Import-Export",
     }
 
